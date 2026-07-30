@@ -16,7 +16,17 @@
 
 services:
   - type: web
-    name: depo-web
+    # Bu ad dogrudan adrese donusuyor: <ad>.onrender.com
+    #
+    # DIKKAT: ad yalnizca a-z, 0-9 ve tire icerebilir - alan adi kurali.
+    # Istenen "Depo-test-denız" idi; Turkce noktasiz "ı" alan adinda
+    # KULLANILAMAZ, "i" yapildi. Buyuk harfler de adreste kucuge duser.
+    #   Depo-test-denız  ->  depo-test-deniz.onrender.com
+    #
+    # Adi degistirmek MEVCUT servisin adresini DEGISTIRMEZ - Render'da
+    # alt alan adi servis olusturulurken sabitleniyor. Adres degisecekse
+    # servis silinip yeniden kurulmali.
+    name: depo-test-deniz
     runtime: node
     plan: free
     region: frankfurt          # Neon veritabani da Frankfurt'ta - gecikme dusuk
