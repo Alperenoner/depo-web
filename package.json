@@ -7,7 +7,7 @@
   "main": "sunucu/server.js",
   "scripts": {
     "start": "node sunucu/server.js",
-    "test": "node --test testler/",
+    "test": "node --test \"testler/**/*.test.js\"",
     "db:kur": "node sunucu/veritabani/kur.js",
     "db:dene": "node sunucu/veritabani/baglanti-testi.js"
   },
