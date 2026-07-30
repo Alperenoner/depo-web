@@ -320,10 +320,10 @@ async function panoVerisi() {
     aracSablonlari: araclar.filter((a) => a.sablon),
     kutular,
     planlar,
-    sinirlar: {
-      katalogAzami: require('./dogrula').SINIR.katalogAzami,
-      planAzami: require('./dogrula').SINIR.planAzami,
-    },
+    // Sinirlarin TAMAMI arayuze veriliyor: form dogrulamasi ile sunucu
+    // dogrulamasi ayni sayilari kullansin, iki yerde ayri yasamasin.
+    // (Sunucu yine de her girdiyi kendisi dogrular - bu sadece kolaylik.)
+    sinirlar: require('./dogrula').SINIR,
   };
 }
 

@@ -37,40 +37,44 @@
   /** Kullanilabilir dizilis stratejileri. Yeni eklemek icin buraya bir satir yaz. */
   const STRATEJILER = [
     {
-      id: 'akilli',
-      ad: 'Akıllı Blok',
-      aciklama: 'Her boşluğa, o boşluğu hacim olarak en çok dolduran bloğu koyar',
-      yonelim: 'hepsi',
+      id: 'yatay',
+      ad: 'Yatay Diziliş',
+      aciklama: 'Kutular yatık durur — en kısa kenar yukarı bakar, ' +
+                'taban alanı büyür, daha çok kat çıkar',
+      yonelim: 'yatay',
       puan: 'hacim',
     },
     {
-      id: 'adet',
-      ad: 'En Fazla Adet',
-      aciklama: 'Hacim yerine adet sayısını büyütür',
-      yonelim: 'hepsi',
-      puan: 'adet',
-    },
-    {
-      id: 'boyuna',
-      ad: 'Boyuna Diziliş',
-      aciklama: 'Kutunun uzun kenarı tırın uzunluğu boyunca',
-      yonelim: 'boyuna',
+      id: 'dikey',
+      ad: 'Dikey Diziliş',
+      aciklama: 'Kutular ayakta durur — en uzun kenar yukarı bakar',
+      yonelim: 'dikey',
       puan: 'hacim',
     },
     {
-      id: 'enine',
-      ad: 'Enine Diziliş',
-      aciklama: 'Kutunun uzun kenarı tırın genişliği boyunca',
-      yonelim: 'enine',
+      id: 'optimum',
+      ad: 'Optimum Diziliş',
+      aciklama: 'Bütün duruş ve puanlama birleşimlerini dener, en çok kutu ' +
+                'yerleştireni seçer',
+      yonelim: 'optimum',
       puan: 'hacim',
     },
-    {
-      id: 'dik',
-      ad: 'Yatırmadan (Dik)',
-      aciklama: 'Kutuları hiç yan yatırmaz',
-      yonelim: 'dik',
-      puan: 'hacim',
-    },
+  ];
+
+  /**
+   * OPTIMUM stratejinin denedigi birlesimler.
+   * 'optimum' yok - yoksa kendini cagirir.
+   */
+  const OPTIMUM_ADAYLAR = [
+    { yonelim: 'hepsi', puan: 'hacim' },
+    { yonelim: 'hepsi', puan: 'adet' },
+    { yonelim: 'yatay', puan: 'hacim' },
+    { yonelim: 'yatay', puan: 'adet' },
+    { yonelim: 'dikey', puan: 'hacim' },
+    { yonelim: 'dikey', puan: 'adet' },
+    { yonelim: 'boyuna', puan: 'hacim' },
+    { yonelim: 'enine', puan: 'hacim' },
+    { yonelim: 'dik', puan: 'hacim' },
   ];
 
   // --------------------------------------------------------------------------
@@ -136,9 +140,17 @@
 
     // 2) Strateji kurali
     const enUzun = Math.max(kutu.uzunluk, kutu.genislik, kutu.yukseklik);
+    const enKisa = Math.min(kutu.uzunluk, kutu.genislik, kutu.yukseklik);
     let suzulmus = izinli;
 
-    if (yonelimKurali === 'boyuna') {
+    if (yonelimKurali === 'yatay') {
+      // YATAY: kutu mumkun oldugunca yatik dursun -> dikey eksende EN KISA kenar.
+      // Taban alani buyur, yuk yuksekligi duser, daha cok kat cikar.
+      suzulmus = izinli.filter((d) => d.dy === enKisa);
+    } else if (yonelimKurali === 'dikey') {
+      // DIKEY: kutu mumkun oldugunca ayakta dursun -> dikey eksende EN UZUN kenar.
+      suzulmus = izinli.filter((d) => d.dy === enUzun);
+    } else if (yonelimKurali === 'boyuna') {
       suzulmus = izinli.filter((d) => d.du === enUzun);
     } else if (yonelimKurali === 'enine') {
       suzulmus = izinli.filter((d) => d.dg === enUzun);
@@ -343,9 +355,15 @@
    * @param {Object} secenekler {yonelim, puan, pay, agirlikSiniri}
    */
   function planla(arac, kalemler, secenekler) {
+    // OPTIMUM: tek bir kural degil, aramadir. Butun aday birlesimleri dener,
+    // en iyisini dondurur. Adaylarin icinde 'optimum' YOK -> ozyineleme olmaz.
+    if (secenekler && secenekler.yonelim === 'optimum') {
+      return enIyiyiSec(arac, kalemler, secenekler);
+    }
+
     const ayar = Object.assign(
       {
-        yonelim: 'hepsi', // hepsi | boyuna | enine | dik
+        yonelim: 'hepsi', // hepsi | yatay | dikey | boyuna | enine | dik
         puan: 'hacim', // hacim | adet
         pay: 0, // kutular arasi pay (mm)
         agirlikSiniri: true, // false ise sadece hacme bakar
@@ -643,6 +661,61 @@
       agirlikMerkeziMm,
       maksAgirlik,
     };
+  }
+
+  // --------------------------------------------------------------------------
+  //  OPTIMUM SECIM
+  //
+  //  Sira onemli: once "istenen adetler sigdi mi", sonra "kac kutu girdi",
+  //  en son "hacim ne kadar doldu". Boylece adedi belli bir yuk varken
+  //  bir kismini disarida birakan ama hacmi daha iyi dolduran plan
+  //  secilmez - kullanicinin asil derdi yukun sigmasi.
+  // --------------------------------------------------------------------------
+
+  function sigmayanToplami(plan) {
+    let t = 0;
+    for (const s of plan.sigmayanlar) t += s.kalan;
+    return t;
+  }
+
+  /** a, b'den daha iyi mi? */
+  function dahaIyi(a, b) {
+    if (!b) return true;
+    const ak = sigmayanToplami(a);
+    const bk = sigmayanToplami(b);
+    if (ak !== bk) return ak < bk; // az sigmayan kazanir
+    if (a.ozet.toplamAdet !== b.ozet.toplamAdet) {
+      return a.ozet.toplamAdet > b.ozet.toplamAdet; // cok kutu kazanir
+    }
+    if (a.ozet.hacimDoluluk !== b.ozet.hacimDoluluk) {
+      return a.ozet.hacimDoluluk > b.ozet.hacimDoluluk;
+    }
+    // Esitse daha az blok = elle yuklemesi daha kolay
+    return a.ozet.blokSayisi < b.ozet.blokSayisi;
+  }
+
+  function enIyiyiSec(arac, kalemler, ekAyar) {
+    let enIyi = null;
+    let enIyiAday = null;
+
+    for (const aday of OPTIMUM_ADAYLAR) {
+      const plan = planla(arac, kalemler, Object.assign({}, ekAyar, aday));
+      if (dahaIyi(plan, enIyi)) {
+        enIyi = plan;
+        enIyiAday = aday;
+      }
+    }
+
+    if (!enIyi) return planla(arac, kalemler, Object.assign({}, ekAyar, { yonelim: 'hepsi' }));
+
+    // Hangi birlesimin kazandigi arayuzde gosterilebilsin
+    enIyi.ayar = Object.assign({}, enIyi.ayar, {
+      yonelim: 'optimum',
+      secilenYonelim: enIyiAday.yonelim,
+      secilenPuan: enIyiAday.puan,
+      denenenAdaySayisi: OPTIMUM_ADAYLAR.length,
+    });
+    return enIyi;
   }
 
   // --------------------------------------------------------------------------

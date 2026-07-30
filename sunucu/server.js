@@ -177,9 +177,15 @@ async function statikSun(cevap, istenenYol) {
   const uzanti = path.extname(tamYol).toLowerCase();
   const tur = ICERIK_TURLERI[uzanti] || 'application/octet-stream';
 
-  // HTML her zaman taze okunur; digerleri kisa sure onbelleklenir
-  const onbellek =
-    uzanti === '.html' ? 'no-store' : 'public, max-age=3600';
+  // Onbellek: KENDI dosyalarimiz (html/css/js) hic onbelleklenmez.
+  // Yoksa arayuzu degistirdikten sonra tarayici eski dosyayi calistirmaya
+  // devam ediyor ve "az once vardi, simdi yok" gibi hayalet hatalar cikiyor.
+  // vendor/ altindaki kutuphaneler degismedigi icin uzun sure onbelleklenir
+  // (three.min.js 589 KB - her aciliste yeniden indirmek anlamsiz).
+  const vendorMi = tamYol.includes(path.sep + 'vendor' + path.sep);
+  const onbellek = vendorMi
+    ? 'public, max-age=31536000, immutable'
+    : 'no-store';
 
   cevap.writeHead(
     200,

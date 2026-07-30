@@ -281,29 +281,105 @@ test('903.756 paketlik plan 50 ms altinda biter', () => {
 });
 
 // ============================================================================
-//  6. STRATEJI KARSILASTIRMASI  (rehber, bolum 12)
-//     Akilli Blok 1.440 - Enine 1.368 (-%5,0) - Dik 1.364 (-%5,3)
+//  6. STRATEJI KARSILASTIRMASI
+//     Uc dizilis mantigi: Yatay - Dikey - Optimum.
+//     Optimum bir kural degil ARAMADIR: butun durus/puan birlesimlerini
+//     dener, en iyisini secer. Bu yuzden rehberdeki 1.440 referansini
+//     Optimum tutar.
 // ============================================================================
 
-test('Karsilastirma: Akilli 1.440, Enine 1.368, Dik 1.364', () => {
+test('Uc strateji tanimli: yatay, dikey, optimum', () => {
+  assert.deepEqual(
+    Yerlesim.STRATEJILER.map((s) => s.id),
+    ['yatay', 'dikey', 'optimum']
+  );
+});
+
+test('Karsilastirma: Optimum 1.440, Yatay 1.364, Dikey 1.240', () => {
   const sonuclar = Yerlesim.hepsiniHesapla(ARAC_14M, [
     { kutu: KUTULAR.marlboroKoli, maks: true },
   ]);
   const bul = (id) => sonuclar.find((s) => s.id === id);
 
-  assert.equal(bul('akilli').adet, 1440);
-  assert.equal(bul('enine').adet, 1368);
-  assert.equal(bul('dik').adet, 1364);
+  assert.equal(bul('optimum').adet, 1440, 'Optimum rehberdeki 1.440i bulmali');
+  assert.equal(bul('yatay').adet, 1364);
+  assert.equal(bul('dikey').adet, 1240);
 
-  assert.equal(bul('akilli').enIyi, true, 'Akilli Blok en iyi olmali');
-  assert.ok(
-    Math.abs(bul('enine').fark - -5.0) < 0.1,
-    'Enine farki -%5,0 olmali, bulunan: ' + bul('enine').fark.toFixed(1)
+  assert.equal(bul('optimum').enIyi, true, 'Optimum en iyi olmali');
+});
+
+test('Optimum hicbir zaman digerlerinden kotu olamaz', () => {
+  // Tek kutuda degil, farkli sekillerde de gecerli olmali - yoksa
+  // "optimum" adi yanlis olur.
+  const denekler = [
+    KUTULAR.marlboroKoli,
+    KUTULAR.marlboroKarton,
+    KUTULAR.koliOrta,
+    KUTULAR.koliKucuk,
+    KUTULAR.euroPaletBos,
+    // Uzun ve ince: yatay/dikey arasindaki fark en cok burada aciliyor
+    { id: 'cubuk', ad: 'Cubuk', uzunluk: 1800, genislik: 200, yukseklik: 150,
+      agirlik: 5, yatirilabilir: true, maksIstif: 0 },
+  ];
+
+  for (const kutu of denekler) {
+    const kalem = [{ kutu, maks: true }];
+    const opt = Yerlesim.planla(ARAC_14M, kalem, { yonelim: 'optimum' });
+    const yatay = Yerlesim.planla(ARAC_14M, kalem, { yonelim: 'yatay' });
+    const dikey = Yerlesim.planla(ARAC_14M, kalem, { yonelim: 'dikey' });
+
+    assert.ok(
+      opt.ozet.toplamAdet >= yatay.ozet.toplamAdet,
+      kutu.ad + ': optimum (' + opt.ozet.toplamAdet + ') yataydan (' +
+        yatay.ozet.toplamAdet + ') az olamaz'
+    );
+    assert.ok(
+      opt.ozet.toplamAdet >= dikey.ozet.toplamAdet,
+      kutu.ad + ': optimum (' + opt.ozet.toplamAdet + ') dikeyden (' +
+        dikey.ozet.toplamAdet + ') az olamaz'
+    );
+  }
+});
+
+test('Yatay en kisa kenari, Dikey en uzun kenari yukari bakar', () => {
+  const kutu = KUTULAR.marlboroKoli; // 575 x 450 x 242
+  const enKisa = 242;
+  const enUzun = 575;
+
+  const yatay = Yerlesim.planla(ARAC_14M, [{ kutu, maks: true }], { yonelim: 'yatay' });
+  for (const b of yatay.bloklar) {
+    assert.equal(b.ky, enKisa, 'Yatay dizilisde dikey eksen en kisa kenar olmali');
+  }
+
+  const dikey = Yerlesim.planla(ARAC_14M, [{ kutu, maks: true }], { yonelim: 'dikey' });
+  for (const b of dikey.bloklar) {
+    assert.equal(b.ky, enUzun, 'Dikey dizilisde dikey eksen en uzun kenar olmali');
+  }
+});
+
+test('Optimum hangi birlesimi sectigini bildirir', () => {
+  const p = Yerlesim.planla(ARAC_14M, [{ kutu: KUTULAR.marlboroKoli, maks: true }], {
+    yonelim: 'optimum',
+  });
+  assert.equal(p.ayar.yonelim, 'optimum');
+  assert.ok(p.ayar.secilenYonelim, 'secilenYonelim dolu olmali');
+  assert.ok(p.ayar.secilenPuan, 'secilenPuan dolu olmali');
+  assert.ok(p.ayar.denenenAdaySayisi > 1, 'birden fazla aday denenmeli');
+  assert.notEqual(p.ayar.secilenYonelim, 'optimum', 'ozyineleme olmamali');
+});
+
+test('Optimum, adedi belli yuku sigdirmayi hacim dolulugundan ustun tutar', () => {
+  // Adedi belli kalem sigmiyorsa, hacmi daha iyi dolduran plan secilmemeli.
+  const p = Yerlesim.planla(
+    ARAC_14M,
+    [
+      { kutu: KUTULAR.marlboroKoli, adet: 1300 },
+      { kutu: KUTULAR.koliKucuk, maks: true },
+    ],
+    { yonelim: 'optimum' }
   );
-  assert.ok(
-    Math.abs(bul('dik').fark - -5.3) < 0.1,
-    'Dik farki -%5,3 olmali, bulunan: ' + bul('dik').fark.toFixed(1)
-  );
+  const kalan = p.sigmayanlar.reduce((t, s) => t + s.kalan, 0);
+  assert.equal(kalan, 0, 'Adedi belli 1.300 koli tam yerlesmeliydi');
 });
 
 // ============================================================================
