@@ -356,6 +356,13 @@ button.tam { width: 100%; }
 
 .uyari ul { margin: 6px 0 0; padding-left: 20px; }
 
+/* Basarili islem bildirimi (sifre degistirildi gibi) */
+.uyari.iyi {
+  background: rgb(81 207 102 / 0.1);
+  border-color: rgb(81 207 102 / 0.4);
+  color: var(--yesil);
+}
+
 /* ------------------------------------------------------------------ sekmeler */
 
 .sekmeler {
@@ -882,4 +889,39 @@ table.bloklar .isaret { color: var(--soluk); }
   .panel { border-right: none; border-bottom: 1px solid var(--kenar); overflow: visible; }
   .gostergeler,
   .gostergeler.dortlu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* Ustbant: marka + 4 dugme tek satira sigmiyor, sarsin.
+     Yuksekligi de sabit birakmamak gerek, yoksa ikinci satir tasar. */
+  .ustbant {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .ustbant .bosluk { flex-basis: 100%; height: 0; }
+
+  /* Alti sekme telefonda tek satira sigmiyordu ve KIRPILIYORDU: son
+     sekmelere (Yukleme Listesi, Bloklar) hic ulasilamiyordu. Sarmak yatay
+     kaydirmadan iyi - dokunmatikte gizli oge kalmiyor. */
+  .sekmeler { flex-wrap: wrap; gap: 4px 4px; }
+
+  /* Sarinca "sekme panele bitisik" numarasi bozuluyor (etkin sekme alt
+     satirdaysa cizgiyle hizalanmiyor); o yuzden ustteki -1px kaydirma
+     kucuk ekranda kapatiliyor. */
+  .sekme { margin-bottom: 0; }
+  .sekme.etkin { border-bottom: 1px solid var(--kenar); }
+}
+
+/* Cok dar telefonlar: gostergeler tek sutuna, dugmeler alt alta */
+@media (max-width: 480px) {
+  .gostergeler,
+  .gostergeler.dortlu { grid-template-columns: 1fr; }
+
+  .dugmeler { flex-wrap: wrap; }
+  .dugmeler > button { flex: 1 1 44%; }
+
+  .ikili { grid-template-columns: 1fr; }
+
+  /* 3B sahnesi dar ekranda daha bol yer alsin (kasa cok uzun) */
+  .uc-sahne { height: min(52vh, 380px); }
 }

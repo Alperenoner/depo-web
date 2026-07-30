@@ -1,0 +1,47 @@
+# =============================================================================
+#  Render kurulum dosyasi (Blueprint)
+#
+#  Render bu dosyayi okuyup servisi kendisi kuruyor - panelde form doldurmak
+#  gerekmiyor. Ucretsiz katman: 750 ornek-saat/ay, 15 dakika trafik almazsa
+#  uykuya geciyor, ilk istekte ~1 dakikada uyaniyor.
+#
+#  Veritabani BURADA TANIMLI DEGIL - Neon'da duruyor (Render'in ucretsiz
+#  Postgres'i 30 gunde siliniyor, Neon'unki kalici). Baglantiyi DATABASE_URL
+#  ortam degiskeni tasiyor.
+#
+#  SIFRELER BU DOSYAYA YAZILMAZ. `sync: false` isaretli degiskenleri Render
+#  panelinde kullanici kendisi giriyor; boylece git'e hicbir gizli deger
+#  girmiyor.
+# =============================================================================
+
+services:
+  - type: web
+    name: depo-web
+    runtime: node
+    plan: free
+    region: frankfurt          # Neon veritabani da Frankfurt'ta - gecikme dusuk
+    branch: main
+
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+
+    # Uyandiktan sonra hazir olup olmadigini buradan anliyor. /api/durum giris
+    # ISTEMEYEN uclardan biri (bkz. server.js ACIK_YOLLAR), o yuzden uygun.
+    healthCheckPath: /api/durum
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # HSTS: tarayiciya "bu siteye hep https ile gel" der. Yalnizca uretimde
+      # aciliyor - localhost'ta acilsa gelistirme kilitlenirdi.
+      - key: HSTS
+        value: "1"
+
+      # ---- Panelden elle girilecekler (git'e girmez) ----
+      - key: DATABASE_URL         # Neon baglanti adresi
+        sync: false
+      - key: YONETICI_KULLANICI
+        sync: false
+      - key: YONETICI_SIFRE       # yalnizca ILK kurulumda kullanilir
+        sync: false

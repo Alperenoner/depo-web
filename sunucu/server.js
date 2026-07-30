@@ -73,15 +73,24 @@ function guvenliMi(istek) {
   return Boolean(istek.socket.encrypted);
 }
 
+// HSTS (tarayiciya "bu siteye artik hep https ile gel" demek) yalnizca
+// URETIM ortaminda gonderilir. Karar ISTEK BASINA degil ORTAM basina:
+//
+// Localhost'ta http ile calisiyoruz ve tarayici bir kez HSTS gorurse o ana
+// bilgisayar adi icin http'yi KALICI olarak reddediyor - localhost'a HSTS
+// gondermek gelistirmeyi kilitler, geri almak da zor (chrome://net-internals).
+//
+// Render ortama RENDER degiskenini kendisi koyuyor; elle acmak icin HSTS=1.
+const HSTS = process.env.HSTS === '1' || Boolean(process.env.RENDER);
+
 function guvenlikBasliklari(ekstra) {
-  return Object.assign(
-    {
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin',
-      'X-Frame-Options': 'DENY',
-    },
-    ekstra || {}
-  );
+  const basliklar = {
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'same-origin',
+    'X-Frame-Options': 'DENY',
+  };
+  if (HSTS) basliklar['Strict-Transport-Security'] = 'max-age=15552000'; // 180 gun
+  return Object.assign(basliklar, ekstra || {});
 }
 
 function jsonYaz(cevap, kod, govde, ekBasliklar) {

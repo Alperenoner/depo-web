@@ -865,6 +865,97 @@
   }
 
   // ===========================================================================
+  //  SIFRE DEGISTIRME  (FAZ 8)
+  //
+  //  Kurulumdaki sifre zayif ve `npm run db:kur` MEVCUT hesabin sifresini
+  //  degistirmiyor ("zaten var" deyip geciyor). Yani internete acmadan once
+  //  sifreyi degistirmenin tek yolu bu pencere.
+  // ===========================================================================
+
+  // Sunucu en az 6 karakter kabul ediyor (dogrula.sifreDegistir); arayuz
+  // internete acilacak bir site icin bilerek DAHA KATI davraniyor. Sunucu
+  // yine kendi kuralini uyguluyor, burasi yalnizca kullaniciyi zorluyor.
+  const SIFRE_ENAZ = 10;
+
+  function sifreFormuAc() {
+    for (const id of ['sifreEski', 'sifreYeni', 'sifreYeni2', 'sifreKullanici']) {
+      $(id).value = '';
+    }
+    $('sifreHata').textContent = '';
+    gorunur($('sifrePerde'), true);
+    sifreDenetle();
+    $('sifreEski').focus();
+  }
+
+  function sifreDenetle() {
+    const eski = $('sifreEski').value;
+    const yeni = $('sifreYeni').value;
+    const yeni2 = $('sifreYeni2').value;
+
+    let olcut = '';
+    let tamam = false;
+
+    if (yeni.length === 0) {
+      olcut = 'Yeni şifre en az ' + SIFRE_ENAZ + ' karakter olmalı.';
+    } else if (yeni.length < SIFRE_ENAZ) {
+      olcut = yeni.length + ' karakter — en az ' + SIFRE_ENAZ + ' olmalı.';
+    } else if (yeni === eski) {
+      olcut = 'Yeni şifre eskisiyle aynı olamaz.';
+    } else if (yeni2.length === 0) {
+      olcut = 'Yeni şifreyi bir daha yaz.';
+    } else if (yeni !== yeni2) {
+      olcut = 'İki yeni şifre birbirini tutmuyor.';
+    } else if (eski.length === 0) {
+      olcut = 'Mevcut şifreyi de girmen gerekiyor.';
+    } else {
+      olcut = 'Uygun (' + yeni.length + ' karakter).';
+      tamam = true;
+    }
+
+    $('sifreOlcut').textContent = olcut;
+    $('sifreKaydet').disabled = !tamam;
+  }
+
+  async function sifreGonder(olay) {
+    olay.preventDefault();
+    $('sifreKaydet').disabled = true;
+    $('sifreHata').textContent = '';
+
+    try {
+      const c = await fetch('/api/sifre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eski: $('sifreEski').value,
+          yeni: $('sifreYeni').value,
+          yeniTekrar: $('sifreYeni2').value,
+          kullanici: $('sifreKullanici').value.trim(),
+        }),
+      });
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'Şifre değiştirilemedi.');
+
+      gorunur($('sifrePerde'), false);
+      // Alanlari bosalt: sifre DOM'da asili kalmasin
+      for (const id of ['sifreEski', 'sifreYeni', 'sifreYeni2']) $(id).value = '';
+      uyariGoster('Şifre değiştirildi. Kullanıcı adı: ' + cevap.kullanici, 'iyi');
+    } catch (h) {
+      $('sifreHata').textContent = h.message;
+      sifreDenetle();
+    }
+  }
+
+  /** Ana alanin ustunde kisa bir bildirim. */
+  function uyariGoster(metin, tur) {
+    const yer = $('uyariYer');
+    const kutu = document.createElement('div');
+    kutu.className = 'uyari' + (tur === 'iyi' ? ' iyi' : '');
+    kutu.textContent = metin;
+    yer.appendChild(kutu);
+    setTimeout(() => kutu.remove(), 6000);
+  }
+
+  // ===========================================================================
   //  3B GORUNUM  (FAZ 4)
   //
   //  Butun three.js isi 3boyut.js'te. Buradaki sorumluluk: sahneyi ilk
@@ -1605,6 +1696,14 @@
       () => gorunur($('katalogPerde'), false));
     $('katalogYeniKutu').addEventListener('click', () => kutuFormuAc(null));
 
+    // -- sifre penceresi --
+    $('sifreAc').addEventListener('click', sifreFormuAc);
+    $('sifreVazgec').addEventListener('click', () => gorunur($('sifrePerde'), false));
+    $('sifreForm').addEventListener('submit', sifreGonder);
+    for (const id of ['sifreEski', 'sifreYeni', 'sifreYeni2']) {
+      $(id).addEventListener('input', sifreDenetle);
+    }
+
     // -- planlar penceresi --
     $('planlarAc').addEventListener('click', planlariAc);
     $('planKapat').addEventListener('click', () => gorunur($('planPerde'), false));
@@ -1616,7 +1715,7 @@
     // Esc en ustteki pencereyi kapatir: form pencereleri liste pencerelerinin
     // ustunde duruyor (.perde.ust), o yuzden once onlara bakilir. Yoksa
     // katalogdan kutu formu acipEsc'e basinca ikisi birden kapaniyor.
-    const FORM_PERDELERI = ['aracPerde', 'kutuPerde'];
+    const FORM_PERDELERI = ['aracPerde', 'kutuPerde', 'sifrePerde'];
     const LISTE_PERDELERI = ['katalogPerde', 'planPerde'];
 
     document.addEventListener('keydown', (o) => {

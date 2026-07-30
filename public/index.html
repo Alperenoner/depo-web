@@ -19,6 +19,7 @@
   <div class="bosluk"></div>
   <button class="ikincil ufak" id="katalogAc">📦 Katalog</button>
   <button class="ikincil ufak" id="planlarAc">💾 Planlar</button>
+  <button class="ikincil ufak" id="sifreAc">🔑 Şifre</button>
   <button class="ikincil ufak" id="cikis">Çıkış</button>
 </header>
 
@@ -446,6 +447,49 @@
       <button class="ikincil" id="planKapat">Kapat</button>
     </div>
   </div>
+</div>
+
+<!-- ================================================== sifre penceresi ==== -->
+<!-- Site tamamen giris arkasinda; internete acildiginda tek koruma bu sifre.
+     Kurulumdaki sifre ZAYIF ve `npm run db:kur` mevcut hesabin sifresini
+     DEGISTIRMIYOR - bu yuzden degistirmenin tek yolu burasi. -->
+<div class="perde ust" id="sifrePerde" hidden>
+  <form class="pencere" id="sifreForm">
+    <h3>🔑 Şifre Değiştir</h3>
+    <p class="ipucu">
+      Site tamamen giriş arkasında — internete açıldığında tek koruma bu şifre.
+      Mevcut şifreni bilmeden değiştirilemez.
+    </p>
+
+    <label class="sat">
+      <span>Mevcut şifre</span>
+      <input type="password" id="sifreEski" autocomplete="current-password">
+    </label>
+
+    <label class="sat">
+      <span>Yeni şifre</span>
+      <input type="password" id="sifreYeni" autocomplete="new-password">
+    </label>
+
+    <label class="sat">
+      <span>Yeni şifre (tekrar)</span>
+      <input type="password" id="sifreYeni2" autocomplete="new-password">
+    </label>
+
+    <label class="sat">
+      <span>Kullanıcı adı
+        <em style="font-style:normal;opacity:0.65">(boş bırakırsan değişmez)</em></span>
+      <input type="text" id="sifreKullanici" maxlength="80" autocomplete="username">
+    </label>
+
+    <p class="bos-not" id="sifreOlcut" style="padding:0 0 4px"></p>
+    <p class="hata-not" id="sifreHata"></p>
+
+    <div class="dugmeler">
+      <button type="button" class="ikincil" id="sifreVazgec">Vazgeç</button>
+      <button type="submit" id="sifreKaydet" disabled>Değiştir</button>
+    </div>
+  </form>
 </div>
 
 <!-- =================================================== kutu penceresi ==== -->
