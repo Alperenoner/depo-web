@@ -36,11 +36,15 @@ async function kur() {
   );
 
   // ---- 3. Yonetici hesabi ----------------------------------------------
-  const mevcut = await veri.yoneticiOku();
+  // Artik birden fazla hesap olabiliyor; buradaki is yalnizca ILK hesabi
+  // kurmak. Sonrakiler `npm run db:kullanici` ile ekleniyor.
+  const hesapSayisi = await veri.yoneticiSayisi();
 
-  if (mevcut) {
-    console.log('  [2/3] Yonetici hesabi zaten var: ' + mevcut.kullanici);
-    console.log('        (sifre degistirilmedi - arayuzden degistirebilirsin)');
+  if (hesapSayisi > 0) {
+    const liste = await veri.yoneticiListesi();
+    console.log('  [2/3] Hesap zaten var (' + hesapSayisi + '): ' +
+                liste.map((h) => h.kullanici).join(', '));
+    console.log('        (sifreler degistirilmedi - arayuzden degistirilebilir)');
   } else {
     const kullanici = (process.env.YONETICI_KULLANICI || 'admin').trim();
     const sifre = process.env.YONETICI_SIFRE || '';
@@ -59,7 +63,7 @@ async function kur() {
     }
 
     const { tuz, ozet } = await guvenlik.sifreOzetle(sifre);
-    await veri.yoneticiYaz({ kullanici, tuz, ozet, ad: '' });
+    await veri.yoneticiEkle({ kullanici, tuz, ozet, ad: '' });
 
     console.log('  [2/3] Yonetici hesabi olusturuldu: ' + kullanici);
     console.log('        Duz metin sifre veritabaninda TUTULMUYOR (scrypt ozeti).');

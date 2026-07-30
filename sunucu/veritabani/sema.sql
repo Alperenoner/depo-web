@@ -99,13 +99,37 @@ create index if not exists planlar_tarih on planlar (tarih desc);
 --  Duz metin sifre BURADA DURMAZ. Sadece tuz + scrypt ozeti tutulur.
 -- ---------------------------------------------------------------------------
 create table if not exists yonetici (
-  id          smallint    primary key default 1 check (id = 1),
+  id          smallint    primary key,
   kullanici   text        not null,
   tuz         text        not null,
   ozet        text        not null,
   ad          text        not null default '',
   guncellendi timestamptz not null default now()
 );
+
+-- 30 Tem 2026: TEK KULLANICI kisiti kaldirildi.
+--
+-- Tablo `id smallint primary key default 1 check (id = 1)` ile kurulmustu -
+-- yani ikinci bir kullanici EKLENEMIYORDU, veritabani reddediyordu. Ikinci
+-- hesap istenince kisit kaldirildi ve id bir diziden (sequence) veriliyor.
+--
+-- `create table if not exists` var olan tabloya dokunmadigi icin asagidaki
+-- satirlar sart: canli veritabanindaki eski kisit ancak boyle kalkiyor.
+alter table yonetici drop constraint if exists yonetici_id_check;
+
+create sequence if not exists yonetici_id_seq as smallint owned by yonetici.id;
+alter table yonetici alter column id set default nextval('yonetici_id_seq');
+
+-- Diziyi mevcut en buyuk id'nin bir ustune al. is_called=false: bir sonraki
+-- nextval tam bu degeri versin. Bos tabloda 1'den baslar.
+select setval('yonetici_id_seq',
+              coalesce((select max(id) from yonetici), 0) + 1,
+              false);
+
+-- Ayni kullanici adindan iki tane olmasin. Kucuk/buyuk harf ayrimi YOK:
+-- "Deniz" ile "deniz" ayni hesap sayilir, giriste karisiklik olmasin.
+create unique index if not exists yonetici_kullanici_benzersiz
+  on yonetici (lower(kullanici));
 
 -- ---------------------------------------------------------------------------
 --  OTURUMLAR
@@ -120,6 +144,11 @@ create table if not exists oturumlar (
 );
 
 create index if not exists oturumlar_olusturuldu on oturumlar (olusturuldu);
+
+-- Oturum artik HANGI kullaniciya ait oldugunu tasiyor. Sifre degistirme
+-- bunu kullaniyor: birden fazla hesap oldugundan "yoneticinin sifresi"
+-- diye tek bir sey yok, giris yapan kendi sifresini degistiriyor.
+alter table oturumlar add column if not exists kullanici_id smallint;
 
 -- ---------------------------------------------------------------------------
 --  YEDEKLER

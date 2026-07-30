@@ -30,6 +30,13 @@ const MOTOR = path.join(__dirname, '..', 'motor');
 
 // Motor dosyalari public/ disinda durur (Node testleri de ayni dosyayi kullanir).
 // Kopyalamak yerine buradan servis ediyoruz - tek kaynak, ayrisma riski yok.
+// Kullanici adi bulunamayinca sifre karsilastirmasinin YINE DE yapilmasi
+// icin sabit bir sahte kayit. Amac cevap suresini esitlemek: atlanirsa
+// "bu kullanici adi yok" bilgisi olcum yoluyla sizar.
+// Rastgele uretilmis, hicbir sifrenin ozeti degil - eslesmesi imkansiz.
+const SAHTE_TUZ = 'a3f1c9d2e5b74806a1c3d5e7f9081a2b';
+const SAHTE_OZET = '3b'.repeat(64); // 64 bayt = 128 hex, gercek ozetle ayni uzunluk
+
 const MOTOR_DOSYALARI = new Map([['/yerlesim.js', path.join(MOTOR, 'yerlesim.js')]]);
 
 // Giris yapmadan erisilebilecek YOLLAR (baska hicbir sey acik degil)
@@ -211,7 +218,7 @@ async function statikSun(cevap, istenenYol) {
 //  API
 // ---------------------------------------------------------------------------
 
-async function apiIsle(istek, cevap, yol, girisli) {
+async function apiIsle(istek, cevap, yol, girisli, oturum) {
   const yontem = istek.method;
 
   // ---- ACIK UCLAR -------------------------------------------------------
@@ -238,17 +245,16 @@ async function apiIsle(istek, cevap, yol, girisli) {
     const kullanici = dogrula.metin(govde.kullanici, 80);
     const sifre = String(govde.sifre ?? '');
 
-    const yonetici = await veri.yoneticiOku();
-    if (!yonetici) {
-      return hataYaz(cevap, 500, 'Yönetici hesabı kurulmamış. `npm run db:kur` çalıştır.');
-    }
+    const hesap = await veri.yoneticiOku(kullanici);
 
-    const kullaniciDogru = kullanici === yonetici.kullanici;
-    // Kullanici adi yanlis olsa da sifre hesabi YAPILIR: boylece cevap suresi
-    // "kullanici var mi" bilgisini sizdirmaz.
-    const sifreOk = await guvenlik.sifreDogru(sifre, yonetici.tuz, yonetici.ozet);
+    // Kullanici BULUNAMASA DA sifre hesabi yapilir: scrypt pahali bir islem,
+    // atlanirsa cevap gozle gorulur sekilde hizlanir ve "bu kullanici adi
+    // var mi" bilgisi sizar. Bulunamayinca sahte tuz/ozet ile ayni is yapilir.
+    const sifreOk = hesap
+      ? await guvenlik.sifreDogru(sifre, hesap.tuz, hesap.ozet)
+      : await guvenlik.sifreDogru(sifre, SAHTE_TUZ, SAHTE_OZET);
 
-    if (!kullaniciDogru || !sifreOk) {
+    if (!hesap || !sifreOk) {
       const kayit = guvenlik.hataEkle(ip);
       console.warn(
         '[giris] BASARISIZ  ip=' + ip + '  kullanici=' + JSON.stringify(kullanici) +
@@ -258,7 +264,7 @@ async function apiIsle(istek, cevap, yol, girisli) {
     }
 
     guvenlik.hatalariTemizle(ip);
-    const jeton = await guvenlik.oturumAc(ip);
+    const jeton = await guvenlik.oturumAc(ip, hesap.id);
     console.log('[giris] basarili  ip=' + ip);
 
     return jsonYaz(cevap, 200, { girisli: true }, {
@@ -398,30 +404,38 @@ async function apiIsle(istek, cevap, yol, girisli) {
     const sonuc = dogrula.sifreDegistir(govde);
     if (sonuc.hata) return hataYaz(cevap, 400, sonuc.hata);
 
-    const yonetici = await veri.yoneticiOku();
-    if (!yonetici) return hataYaz(cevap, 500, 'Yönetici hesabı bulunamadı.');
+    // Artik birden fazla hesap var: "yoneticinin sifresi" diye tek bir sey
+    // yok, giris yapan KENDI sifresini degistiriyor.
+    if (!oturum || oturum.kullaniciId === null) {
+      return hataYaz(cevap, 401,
+        'Oturum hangi hesaba ait bilinmiyor. Çıkış yapıp tekrar gir.');
+    }
+
+    const hesap = await veri.yoneticiOkuId(oturum.kullaniciId);
+    if (!hesap) return hataYaz(cevap, 401, 'Hesap bulunamadı. Tekrar giriş yap.');
 
     const eskiDogru = await guvenlik.sifreDogru(
       sonuc.deger.eski,
-      yonetici.tuz,
-      yonetici.ozet
+      hesap.tuz,
+      hesap.ozet
     );
     if (!eskiDogru) return hataYaz(cevap, 401, 'Mevcut şifre hatalı.');
 
-    const { tuz, ozet } = await guvenlik.sifreOzetle(sonuc.deger.yeni);
-    await veri.yoneticiYaz({
-      // Kullanici adi bos gelirse AYNI KALIR
-      kullanici: sonuc.deger.kullanici || yonetici.kullanici,
-      tuz,
-      ozet,
-      ad: yonetici.ad,
-    });
+    const yeniKullanici = sonuc.deger.kullanici || hesap.kullanici;
 
-    console.log('[sifre] degistirildi');
-    return jsonYaz(cevap, 200, {
-      tamam: true,
-      kullanici: sonuc.deger.kullanici || yonetici.kullanici,
-    });
+    // Kullanici adi degisiyorsa BASKASI kullaniyor olabilir
+    if (yeniKullanici.toLowerCase() !== hesap.kullanici.toLowerCase()) {
+      const cakisan = await veri.yoneticiOku(yeniKullanici);
+      if (cakisan) {
+        return hataYaz(cevap, 409, 'Bu kullanıcı adı zaten kullanılıyor.');
+      }
+    }
+
+    const { tuz, ozet } = await guvenlik.sifreOzetle(sonuc.deger.yeni);
+    await veri.yoneticiGuncelle(hesap.id, { kullanici: yeniKullanici, tuz, ozet });
+
+    console.log('[sifre] degistirildi  hesap=' + hesap.id);
+    return jsonYaz(cevap, 200, { tamam: true, kullanici: yeniKullanici });
   }
 
   // ---- YEDEKLER ---------------------------------------------------------
@@ -443,10 +457,13 @@ const sunucu = http.createServer(async (istek, cevap) => {
   try {
     // Oturum kontrolu
     const jeton = guvenlik.cerezOku(istek.headers.cookie, guvenlik.CEREZ_ADI);
-    const girisli = await guvenlik.oturumGecerliMi(jeton);
+    // oturumGecerliMi artik true/false degil, {kullaniciId} ya da null
+    // donduruyor - hangi hesabin girdigini sifre degistirme kullaniyor.
+    const oturum = await guvenlik.oturumGecerliMi(jeton);
+    const girisli = oturum !== null;
 
     if (yol.startsWith('/api/')) {
-      return await apiIsle(istek, cevap, yol, girisli);
+      return await apiIsle(istek, cevap, yol, girisli, oturum);
     }
 
     if (istek.method !== 'GET' && istek.method !== 'HEAD') {
@@ -516,18 +533,18 @@ async function baslat() {
     process.exit(1);
   }
 
-  // Yonetici hesabi var mi?
-  let yonetici = null;
+  // Hic hesap var mi?
+  let hesapSayisi = 0;
   try {
-    yonetici = await veri.yoneticiOku();
+    hesapSayisi = await veri.yoneticiSayisi();
   } catch (hata) {
     console.error('\nVERITABANINA ULASILAMADI:', hata.message);
     console.error('  Once `npm run db:dene` ile baglantiyi kontrol et.\n');
     process.exit(1);
   }
 
-  if (!yonetici) {
-    console.error('\nYonetici hesabi yok. Once kurulumu calistir:\n  npm run db:kur\n');
+  if (hesapSayisi === 0) {
+    console.error('\nHic hesap yok. Once kurulumu calistir:\n  npm run db:kur\n');
     process.exit(1);
   }
 
@@ -542,7 +559,7 @@ async function baslat() {
     console.log('  DEPO WEB - Tir Yukleme Planlayici');
     console.log('  ---------------------------------');
     console.log('  Adres     : http://localhost:' + PORT);
-    console.log('  Kullanici : ' + yonetici.kullanici);
+    console.log('  Hesap     : ' + hesapSayisi + ' kullanici');
     console.log('  Erisim    : SITENIN TAMAMI giris arkasinda');
     console.log('');
 

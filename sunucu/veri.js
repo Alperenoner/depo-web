@@ -250,21 +250,71 @@ async function planSil(id) {
 //  YONETICI
 // ---------------------------------------------------------------------------
 
-async function yoneticiOku() {
+//  30 Tem 2026'ya kadar TEK hesap vardi (yonetici.id hep 1). Artik birden
+//  fazla kullanici olabiliyor; hepsi ayni yetkiye sahip - rol/izin ayrimi YOK,
+//  giris yapan herkes her seyi gorur ve degistirebilir.
+
+const YONETICI_ALANLARI = 'id, kullanici, tuz, ozet, ad';
+
+/** Kullanici adindan hesap bulur. Buyuk/kucuk harf ayrimi yok. */
+async function yoneticiOku(kullanici) {
   const { rows } = await sorgu(
-    'select kullanici, tuz, ozet, ad from yonetici where id = 1'
+    `select ${YONETICI_ALANLARI} from yonetici where lower(kullanici) = lower($1)`,
+    [String(kullanici ?? '')]
   );
   return rows.length ? rows[0] : null;
 }
 
-async function yoneticiYaz({ kullanici, tuz, ozet, ad }) {
-  await sorgu(
-    `insert into yonetici (id, kullanici, tuz, ozet, ad, guncellendi)
-     values (1, $1, $2, $3, $4, now())
-     on conflict (id) do update set
-       kullanici = $1, tuz = $2, ozet = $3, ad = $4, guncellendi = now()`,
+async function yoneticiOkuId(id) {
+  const { rows } = await sorgu(
+    `select ${YONETICI_ALANLARI} from yonetici where id = $1`,
+    [id]
+  );
+  return rows.length ? rows[0] : null;
+}
+
+/** Hic hesap var mi? (sunucu acilisindaki kontrol) */
+async function yoneticiSayisi() {
+  const { rows } = await sorgu('select count(*)::int as n from yonetici');
+  return rows[0].n;
+}
+
+async function yoneticiListesi() {
+  const { rows } = await sorgu(
+    'select id, kullanici, ad, guncellendi from yonetici order by id'
+  );
+  return rows;
+}
+
+/**
+ * Yeni hesap ekler. Ayni kullanici adi varsa (buyuk/kucuk harf farki dahil)
+ * benzersiz indeks yuzunden hata firlatir - cagiran taraf yakalar.
+ */
+async function yoneticiEkle({ kullanici, tuz, ozet, ad }) {
+  const { rows } = await sorgu(
+    `insert into yonetici (kullanici, tuz, ozet, ad, guncellendi)
+     values ($1, $2, $3, $4, now())
+     returning ${YONETICI_ALANLARI}`,
     [kullanici, tuz, ozet, ad || '']
   );
+  return rows[0];
+}
+
+async function yoneticiSil(id) {
+  const { rowCount } = await sorgu('delete from yonetici where id = $1', [id]);
+  return rowCount > 0;
+}
+
+/** Var olan hesabin sifresini (ve istenirse kullanici adini) gunceller. */
+async function yoneticiGuncelle(id, { kullanici, tuz, ozet }) {
+  const { rows } = await sorgu(
+    `update yonetici
+        set kullanici = $2, tuz = $3, ozet = $4, guncellendi = now()
+      where id = $1
+      returning ${YONETICI_ALANLARI}`,
+    [id, kullanici, tuz, ozet]
+  );
+  return rows.length ? rows[0] : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -352,7 +402,12 @@ module.exports = {
   planKaydet,
   planSil,
   yoneticiOku,
-  yoneticiYaz,
+  yoneticiOkuId,
+  yoneticiSayisi,
+  yoneticiListesi,
+  yoneticiEkle,
+  yoneticiGuncelle,
+  yoneticiSil,
   yedekAl,
   yedekleriListele,
   tumVeriyiTopla,

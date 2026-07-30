@@ -86,32 +86,45 @@ function hatalariTemizle(ip) {
 
 // --- Oturum ----------------------------------------------------------------
 
-async function oturumAc(ip) {
+async function oturumAc(ip, kullaniciId) {
   const jeton = crypto.randomBytes(36).toString('base64url'); // 48 karakter
   await sorgu(
-    'insert into oturumlar (jeton, ip) values ($1, $2)',
-    [jeton, String(ip || '').slice(0, 64)]
+    'insert into oturumlar (jeton, ip, kullanici_id) values ($1, $2, $3)',
+    [jeton, String(ip || '').slice(0, 64), kullaniciId ?? null]
   );
   return jeton;
 }
 
+/**
+ * Oturum gecerliyse KIMIN oturumu oldugunu dondurur, degilse null.
+ *
+ * Eskiden true/false donuyordu; birden fazla hesap olunca "kim girdi"
+ * bilgisi gerekli oldu (sifre degistirme kendi hesabini degistirmeli).
+ * Cagiran taraf `!== null` diye bakiyor.
+ *
+ * @returns {Promise<{kullaniciId: number|null}|null>}
+ */
 async function oturumGecerliMi(jeton) {
-  if (!jeton) return false;
+  if (!jeton) return null;
   const { rows } = await sorgu(
-    'select olusturuldu from oturumlar where jeton = $1',
+    'select olusturuldu, kullanici_id from oturumlar where jeton = $1',
     [jeton]
   );
-  if (rows.length === 0) return false;
+  if (rows.length === 0) return null;
 
   const yas = Date.now() - new Date(rows[0].olusturuldu).getTime();
   if (yas > OTURUM_SURESI_MS) {
     await oturumKapat(jeton);
-    return false;
+    return null;
   }
 
   // Son gorulme zamanini guncelle (istatistik icin, sureyi uzatmaz)
   await sorgu('update oturumlar set son_gorulme = now() where jeton = $1', [jeton]);
-  return true;
+
+  // kullanici_id null olabilir: cok kullanici gelmeden ONCE acilmis oturumlar.
+  // Bunlar gecerli sayilir (kullanici disari atilmasin) ama sifre degistirmek
+  // isterlerse yeniden giris istenir - hangi hesap olduklarini bilmiyoruz.
+  return { kullaniciId: rows[0].kullanici_id ?? null };
 }
 
 async function oturumKapat(jeton) {

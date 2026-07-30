@@ -9,7 +9,8 @@
     "start": "node sunucu/server.js",
     "test": "node --test \"testler/**/*.test.js\"",
     "db:kur": "node sunucu/veritabani/kur.js",
-    "db:dene": "node sunucu/veritabani/baglanti-testi.js"
+    "db:dene": "node sunucu/veritabani/baglanti-testi.js",
+    "db:kullanici": "node sunucu/veritabani/kullanici.js"
   },
   "engines": {
     "node": ">=20"
