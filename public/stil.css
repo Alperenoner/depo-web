@@ -445,6 +445,60 @@ button.tam { width: 100%; }
   color: var(--soluk);
 }
 
+/* ----------------------------------------------------------------- 3 boyutlu */
+
+.uc-ust {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.dugme-obek { display: flex; gap: 5px; }
+
+/* three.js tuvali bu kutuyu doldurur; yuksekligi buradan gelir.
+   Kapsayici konumlu cunku balon ve hata mesaji icine mutlak yerlesiyor. */
+.uc-sahne {
+  position: relative;
+  background: var(--zemin);
+  border: 1px solid var(--kenar);
+  border-radius: 10px;
+  height: min(60vh, 560px);
+  min-height: 280px;
+  overflow: hidden;
+}
+
+.uc-sahne canvas { display: block; }
+
+.uc-balon {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: rgb(20 22 26 / 0.94);
+  border: 1px solid var(--kenar);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--yazi);
+  white-space: pre-line;
+  max-width: 240px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.5);
+}
+
+/* WebGL yoksa ya da kutuphane yuklenmediyse sahnenin yerine bu cikar */
+.uc-hata {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+  color: var(--soluk);
+}
+
 /* ------------------------------------------------------ karsilastirma kartlari */
 
 .kartlar {

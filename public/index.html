@@ -162,8 +162,10 @@
       <!-- Sekme cubugu. FAZ 3c (katalog/plan) ve 3d (karsilastirma, yukleme
            listesi) buraya yeni dugme + yeni panel ekleyecek. -->
       <nav class="sekmeler" id="sekmeler" role="tablist">
-        <button class="sekme etkin" data-sekme="kusbakisi" role="tab"
-                aria-selected="true">🗺 Kuşbakışı</button>
+        <button class="sekme etkin" data-sekme="ucboyut" role="tab"
+                aria-selected="true">🧊 3 Boyutlu</button>
+        <button class="sekme" data-sekme="kusbakisi" role="tab"
+                aria-selected="false">🗺 Kuşbakışı</button>
         <button class="sekme" data-sekme="yandan" role="tab"
                 aria-selected="false">📐 Yandan Görünüm</button>
         <button class="sekme" data-sekme="karsilastirma" role="tab"
@@ -174,8 +176,46 @@
                 aria-selected="false">🧱 Bloklar</button>
       </nav>
 
+      <!-- ---- 3 boyutlu ---- -->
+      <section class="sekme-icerik" id="panelUcboyut" role="tabpanel">
+        <div class="uc-ust">
+          <div class="dugme-obek">
+            <button class="ikincil ufak" data-aci="serbest">Serbest</button>
+            <button class="ikincil ufak" data-aci="ustten">Üstten</button>
+            <button class="ikincil ufak" data-aci="yandan">Yandan</button>
+            <button class="ikincil ufak" data-aci="arkadan">Arkadan</button>
+          </div>
+
+          <button class="ufak" id="ucAnimasyon">▶ Yükleme Animasyonu</button>
+
+          <label class="katman-sat" style="flex:0 1 240px">
+            <span>Kesit</span>
+            <input type="range" id="ucKesit" min="5" max="100" value="100" step="1">
+          </label>
+
+          <label class="kutucuk" style="margin:0">
+            <input type="checkbox" id="ucDuvarlar" checked>
+            Kasa duvarları
+          </label>
+
+          <span class="katman-etiket" id="ucKip"></span>
+        </div>
+
+        <div class="uc-sahne" id="ucSahne">
+          <div class="uc-balon" id="ucBalon" hidden></div>
+          <div class="uc-hata" id="ucHata" hidden></div>
+        </div>
+
+        <p class="tuval-not">
+          Sürükle döndür · tekerlekle yakınlaş · sağ tık sürükle kaydır.
+          Kutunun üstüne gelince bilgi baloncuğu çıkar.
+          <strong>30.000</strong> kutuya kadar her kutu tek tek çizilir;
+          üstünde bloklar tek parça çizilip yüzlerine ızgara dokusu basılır.
+        </p>
+      </section>
+
       <!-- ---- kusbakisi ---- -->
-      <section class="sekme-icerik" id="panelKusbakisi" role="tabpanel">
+      <section class="sekme-icerik" id="panelKusbakisi" role="tabpanel" hidden>
         <div class="tuval-ust">
           <label class="katman-sat">
             <span>Katman</span>
@@ -260,10 +300,10 @@
       </section>
 
       <p class="faz-not">
-        <strong>FAZ 3d</strong> — beş sekme, katalog ve planlar çalışıyor.
-        Kısayollar: <kbd>1</kbd>–<kbd>5</kbd> sekmeler, <kbd>K</kbd> katalog,
-        <kbd>P</kbd> planlar, <kbd>Esc</kbd> pencereyi kapat.
-        Sırada <strong>FAZ 4</strong> — 3B görünüm.
+        <strong>FAZ 4</strong> — altı sekme (3B dahil), katalog ve planlar
+        çalışıyor. Kısayollar: <kbd>1</kbd>–<kbd>6</kbd> sekmeler,
+        <kbd>K</kbd> katalog, <kbd>P</kbd> planlar,
+        <kbd>Esc</kbd> pencereyi kapat.
       </p>
     </div>
   </main>
@@ -473,8 +513,15 @@
   </form>
 </div>
 
+<!-- three.js klasorun icinde durur, CDN'den cekilmez: site giris arkasinda ve
+     internet olmadan da 3B gorunum calissin (rehber 7). Surum r147 - global
+     THREE ve klasorden yuklenen OrbitControls'u destekleyen son surum. -->
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/OrbitControls.js"></script>
+
 <script src="/yerlesim.js"></script>
 <script src="/cizim.js"></script>
+<script src="/3boyut.js"></script>
 <script src="/uygulama.js"></script>
 </body>
 </html>

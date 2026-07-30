@@ -35,7 +35,10 @@
     plan: null,
 
     // ---- FAZ 3b: gorunum durumu ----
-    sekme: 'kusbakisi',
+    // Varsayilan sekme 3B (rehberdeki sira); WebGL yoksa baslat() kusbakisina
+    // dusuruyor - ilk acilista bos bir hata ekrani karsilamasin.
+    sekme: 'ucboyut',
+    ucKuruldu: false,
     // Plandaki farkli kat yukseklikleri (mm), artan sirada
     katmanlar: [],
     // 0 = butun katmanlar; 1..n = katmanlar[indis-1]
@@ -47,6 +50,19 @@
     '#4a9eff', '#51cf66', '#ffd43b', '#ff8787', '#a78bfa',
     '#38d9a9', '#ffa94d', '#f783ac', '#74c0fc', '#c0eb75',
   ];
+
+  // 3boyut.js yuklenmediyse uygulamanin kalani calismaya DEVAM ETSIN.
+  // Motor ve cizim onsart ama 3B degil; bu vekil sayesinde her cagri yerinde
+  // sessizce hicbir sey yapiyor ve 3B sekmesi sebebini yaziyor.
+  const Uc = (typeof globalThis !== 'undefined' && globalThis.Uc) || {
+    destekliyorMu: () => false,
+    webglVarMi: () => false,
+    kur: () => false,
+    ciz: () => false,
+    aci() {}, kesit() {}, animasyonBaslat() {}, duvarlariGoster() {},
+    basla() {}, durdur() {}, olcuDegisti() {},
+    durum: () => ({ kuruldu: false, kip: 'tek', ornekSayisi: 0 }),
+  };
 
   // ------------------------------------------------------------- kisayollar
 
@@ -618,6 +634,7 @@
     // Acik olan sekme yenilenmeli; kapalilar sekmeSec'te hesaplanacak
     if (D.sekme === 'karsilastirma') karsilastirmaCiz();
     if (D.sekme === 'liste') listeCiz();
+    if (D.sekme === 'ucboyut') ucboyutuCiz();
     // Optimum hangi durusu sectigi plana bagli - her hesaptan sonra yenilenir
     stratejiAciklamaYaz();
   }
@@ -733,6 +750,7 @@
   // ===========================================================================
 
   const PANELLER = {
+    ucboyut: 'panelUcboyut',
     kusbakisi: 'panelKusbakisi',
     yandan: 'panelYandan',
     karsilastirma: 'panelKarsilastirma',
@@ -740,8 +758,9 @@
     bloklar: 'panelBloklar',
   };
 
-  // Klavye: sekmeler 1..5, pencereler K ve P. Sira sekme cubugundakiyle ayni.
-  const SEKME_SIRASI = ['kusbakisi', 'yandan', 'karsilastirma', 'liste', 'bloklar'];
+  // Klavye: sekmeler 1..6, pencereler K ve P. Sira sekme cubugundakiyle ayni.
+  const SEKME_SIRASI = ['ucboyut', 'kusbakisi', 'yandan', 'karsilastirma',
+                        'liste', 'bloklar'];
 
   function sekmeSec(ad) {
     if (!PANELLER[ad]) return;
@@ -771,6 +790,11 @@
     // Karsilastirma pahali (11 yerlesim hesabi) - yalnizca gorunurken
     if (ad === 'karsilastirma') karsilastirmaCiz();
     if (ad === 'liste') listeCiz();
+
+    // 3B sahnesi arka planda bosa GPU yakmasin: gorunurken doner, gizlenince
+    // durur. Gizliyken kapsayicinin olcusu 0 oldugu icin zaten cizilemez.
+    if (ad === 'ucboyut') ucboyutuAc();
+    else Uc.durdur();
   }
 
   // ---- katman kaydiricisi ----
@@ -838,6 +862,54 @@
       Cizim.yandan($('tuvalYan'), D.plan, D.aracAktif, { kagit: !!kagit });
     }
     // karsilastirma / liste / bloklar sekmeleri HTML - cizim gerekmiyor
+  }
+
+  // ===========================================================================
+  //  3B GORUNUM  (FAZ 4)
+  //
+  //  Butun three.js isi 3boyut.js'te. Buradaki sorumluluk: sahneyi ilk
+  //  gorunuste kurmak, plan degisince yeniden cizdirmek, sekme gizlenince
+  //  durdurmak. Kutuphane ya da WebGL yoksa sekme calisir ama sahne yerine
+  //  aciklama gosterir - arayuzun kalani etkilenmez.
+  // ===========================================================================
+
+  function ucboyutuAc() {
+    const hata = $('ucHata');
+
+    if (!Uc.destekliyorMu() || !Uc.webglVarMi()) {
+      hata.textContent = !Uc.destekliyorMu()
+        ? '3B kütüphanesi (vendor/three.min.js) yüklenemedi.'
+        : 'Bu tarayıcıda WebGL kapalı ya da desteklenmiyor — 3B görünüm çizilemiyor. Diğer sekmeler çalışır.';
+      gorunur(hata, true);
+      return;
+    }
+
+    if (!D.ucKuruldu) {
+      D.ucKuruldu = Uc.kur($('ucSahne'), $('ucBalon'));
+      if (!D.ucKuruldu) {
+        hata.textContent = '3B sahne kurulamadı.';
+        gorunur(hata, true);
+        return;
+      }
+    }
+
+    gorunur(hata, false);
+    Uc.basla();
+    ucboyutuCiz();
+  }
+
+  function ucboyutuCiz() {
+    if (!D.ucKuruldu || D.sekme !== 'ucboyut') return;
+    if (!D.plan || !D.aracAktif) return;
+
+    Uc.ciz(D.plan, D.aracAktif, { duvarlar: $('ucDuvarlar').checked });
+    // Kesit kaydiricisi kullanicinin biraktigi yerde kalsin
+    Uc.kesit(Number($('ucKesit').value) / 100);
+
+    const d = Uc.durum();
+    $('ucKip').textContent = d.kip === 'blok'
+      ? 'Blok kipi — ' + sayiYaz(D.plan.ozet.toplamAdet) + ' kutu, ızgara dokusu'
+      : 'Tek tek kip — ' + sayiYaz(d.ornekSayisi) + ' kutu ayrı çizildi';
   }
 
   // ===========================================================================
@@ -1492,11 +1564,13 @@
       cizimYenile();
     });
 
-    // Ana alanin genisligi cizimin olcegini belirliyor - degisince yenilenmeli
+    // Ana alanin genisligi cizimin olcegini belirliyor - degisince yenilenmeli.
+    // 3B sahnenin de kendi tuvalini yeniden boyutlamasi gerekiyor.
+    const olcuDegisti = () => { cizimYenile(); Uc.olcuDegisti(); };
     if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(cizimYenile).observe(document.querySelector('.alan'));
+      new ResizeObserver(olcuDegisti).observe(document.querySelector('.alan'));
     } else {
-      window.addEventListener('resize', cizimYenile);
+      window.addEventListener('resize', olcuDegisti);
     }
 
     // -- cikis --
@@ -1504,6 +1578,16 @@
       await fetch('/api/cikis', { method: 'POST' });
       location.replace('/giris');
     });
+
+    // -- 3B kontrolleri --
+    for (const dugme of document.querySelectorAll('[data-aci]')) {
+      dugme.addEventListener('click', () => Uc.aci(dugme.dataset.aci));
+    }
+    $('ucAnimasyon').addEventListener('click', () => Uc.animasyonBaslat());
+    $('ucKesit').addEventListener('input',
+      () => Uc.kesit(Number($('ucKesit').value) / 100));
+    $('ucDuvarlar').addEventListener('change',
+      () => Uc.duvarlariGoster($('ucDuvarlar').checked));
 
     // -- yazdirma --
     // Ekrandaki her seyi degil ACIK SEKMEYI basar (bkz. stil.css @media print)
@@ -1589,6 +1673,8 @@
   // ===========================================================================
 
   async function baslat() {
+    // 3boyut.js eksikse uygulama CALISMAYA DEVAM EDER, yalnizca 3B sekmesi
+    // aciklama gosterir - motor ve cizim onsart, o ikisi yoksa duruyoruz.
     if (typeof Yerlesim === 'undefined' || typeof Cizim === 'undefined') {
       const eksik = typeof Yerlesim === 'undefined' ? 'Motor (yerlesim.js)'
                                                     : 'Çizim (cizim.js)';
@@ -1600,13 +1686,20 @@
     stratejileriCiz();
     gostergeleriBosalt();
 
+    // 3B kurulamiyorsa varsayilan sekme kusbakisi olsun: kullaniciyi bos bir
+    // hata ekraniyla karsilamak yerine calisan gorunume dusuruyoruz.
+    // (3B sekmesi yine tiklanabilir, sebebini orada yaziyor.)
+    let ilkSekme = Uc.destekliyorMu() && Uc.webglVarMi() ? 'ucboyut' : 'kusbakisi';
+
     // ?sekme=... ile gelen adres o sekmeyi acar (sekmeSec URL'e kendisi yaziyor,
     // yani sayfa yenilenince kullanicinin kaldigi sekme geri gelir).
     // veriYukle'den ONCE cagriliyor: hesapla() dogru sekmeyi cizsin.
     try {
       const istenen = new URL(location.href).searchParams.get('sekme');
-      if (istenen && PANELLER[istenen]) sekmeSec(istenen);
+      if (istenen && PANELLER[istenen]) ilkSekme = istenen;
     } catch (h) { /* adres cozulemezse varsayilan sekme kalir */ }
+
+    sekmeSec(ilkSekme);
 
     try {
       await veriYukle();
