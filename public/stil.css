@@ -769,7 +769,11 @@ table.bloklar .kutu-ad { display: flex; align-items: center; gap: 7px; }
 }
 
 /* Liste pencereleri (katalog, planlar) formlardan genis. */
-.pencere.genis { max-width: 900px; }
+/* Katalog/plan pencereleri. 900 px idi; Material ve Format sutunlari
+   eklenince tablo 984 px'e cikip yatay kaymaya basladi ve sabitlenen eylem
+   sutunu Sigar/Doluluk degerlerini ortuyordu. 1080 px'te tablo sigiyor,
+   sabitleme yalnizca dar ekranda devreye giriyor. */
+.pencere.genis { max-width: 1080px; }
 
 /* Form pencereleri liste pencerelerinin USTUNDE acilir - katalogdan
    "Duzenle"ye basinca kutu formu katalogu kapatmadan uste biner. */
@@ -803,6 +807,32 @@ table.bloklar td.eylem button {
   padding: 3px 7px;
   font-size: 11.5px;
   margin-left: 4px;
+}
+
+/* ---- Eylem sutunu SAGA SABITLENIR ----------------------------------------
+   Katalog tablosu pencereden genis olabiliyor (.tablo-sarmal yatay kayiyor).
+   Material/Format sutunlari eklenince tablo 984 px'e cikti, pencere 854 px:
+   Duzenle/Coğalt/Sil dugmeleri sagda gorus alaninin DISINDA kaldi ve kutu
+   silinemez gorundu. Dugmeler tablonun en onemli parcasi, kaydirmaya bagli
+   olmamali - sabitleniyor.
+
+   `background` sart: sabit sutunun altindan kayan icerik gecmesin.
+   Soldaki cizgi ayrildigini belli ediyor. */
+table.bloklar td.eylem,
+table.bloklar th.eylem {
+  position: sticky;
+  right: 0;
+  background: var(--yuzey);
+  border-left: 1px solid var(--kenar);
+}
+
+/* Baslik satiri hem ustte hem sagda sabit - kesisimde zemini basliginki olsun */
+table.bloklar th.eylem { background: var(--zemin); z-index: 2; }
+
+/* Yazdirirken sabitleme anlamsiz, hatta kagitta kayma yapar */
+@media print {
+  table.bloklar td.eylem,
+  table.bloklar th.eylem { position: static; border-left: none; }
 }
 
 /* Sigma sayisi katalogun asil bilgisi - one cikmali */
