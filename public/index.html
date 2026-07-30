@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>DEPOLAMA — Tır Yükleme Planlayıcı</title>
+<link rel="stylesheet" href="/giris.css">
+<style>
+  /* GECICI SAYFA - FAZ 3'te gercek arayuz gelecek */
+  body { place-items: start center; padding-top: 48px; }
+  .kutu { max-width: 620px; text-align: left; }
+  h1, .alt, .logo { text-align: center; }
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13px; }
+  th, td { padding: 7px 9px; border-bottom: 1px solid var(--kenar); text-align: left; }
+  th { color: var(--soluk); font-weight: 600; font-size: 11px;
+       text-transform: uppercase; letter-spacing: 0.05em; }
+  code { background: var(--zemin); padding: 2px 5px; border-radius: 4px;
+         font-size: 12px; color: var(--vurgu); }
+  .yesil { color: #51cf66; }
+  .satir { display: flex; gap: 10px; margin-top: 20px; }
+  .satir button { flex: 1; }
+  .ikincil { background: transparent; border: 1px solid var(--kenar);
+             color: var(--soluk); }
+  .ikincil:hover:not(:disabled) { background: var(--zemin); color: var(--yazi); }
+  .not { margin-top: 22px; padding: 12px 14px; background: var(--zemin);
+         border: 1px solid var(--kenar); border-radius: 8px;
+         font-size: 13px; color: var(--soluk); }
+</style>
+</head>
+<body>
+
+<main class="kutu">
+  <div class="logo">📦</div>
+  <h1 id="baslik">DEPOLAMA</h1>
+  <p class="alt" id="altBaslik">Tır Yükleme Planlayıcı</p>
+
+  <p class="not">
+    <strong class="yesil">FAZ 2 tamam.</strong> Sunucu, veritabanı ve giriş sistemi
+    çalışıyor. Bu geçici bir durum sayfası — gerçek arayüz <strong>FAZ 3</strong>'te
+    gelecek.
+  </p>
+
+  <table>
+    <tr><th colspan="2">Veritabanı durumu</th></tr>
+    <tr><td>Araç</td><td id="dArac">…</td></tr>
+    <tr><td>Kutu kataloğu</td><td id="dKutu">…</td></tr>
+    <tr><td>Kayıtlı plan</td><td id="dPlan">…</td></tr>
+    <tr><td>Araç şablonu</td><td id="dSablon">…</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="2">Motor testi (tarayıcıda)</th></tr>
+    <tr><td>Durum</td><td id="mDurum">…</td></tr>
+    <tr><td>Sonuç</td><td id="mSonuc">…</td></tr>
+  </table>
+
+  <div class="satir">
+    <button class="ikincil" id="cikis">Çıkış Yap</button>
+  </div>
+</main>
+
+<script src="/yerlesim.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const yaz = (id, deger) => { document.getElementById(id).innerHTML = deger; };
+  const bos = (n) => n === 0
+    ? '<span style="color:var(--soluk)">0 — boş (doğru, elle oluşturulacak)</span>'
+    : n;
+
+  // ---- Veritabani durumu ----
+  fetch('/api/veri')
+    .then((c) => c.json())
+    .then((v) => {
+      yaz('baslik', v.ayarlar.baslik);
+      yaz('altBaslik', v.ayarlar.altBaslik);
+      yaz('dArac', v.aracAktif
+        ? v.aracAktif.ad + ' (' + v.aracAktif.uzunluk + '×' +
+          v.aracAktif.genislik + '×' + v.aracAktif.yukseklik + ' mm)'
+        : bos(v.araclar.length));
+      yaz('dKutu', bos(v.kutular.length));
+      yaz('dPlan', bos(v.planlar.length));
+      yaz('dSablon', bos(v.aracSablonlari.length));
+    })
+    .catch(() => yaz('dArac', '<span style="color:var(--kirmizi)">okunamadı</span>'));
+
+  // ---- Motor tarayicida da calisiyor mu? ----
+  // Bu olculer SADECE bu kontrol icin; uygulamaya hazir olcu GIRMEZ.
+  try {
+    const plan = Yerlesim.planla(
+      { uzunluk: 14000, genislik: 2480, yukseklik: 2700, maksAgirlik: 24000 },
+      [{ kutu: { id: 't', ad: 'test', uzunluk: 575, genislik: 450,
+                 yukseklik: 242, agirlik: 14 }, maks: true }]
+    );
+    const dogru = plan.ozet.toplamAdet === 1440;
+    yaz('mDurum', dogru
+      ? '<span class="yesil">çalışıyor</span>'
+      : '<span style="color:var(--kirmizi)">beklenmeyen sonuç</span>');
+    yaz('mSonuc', plan.ozet.toplamAdet.toLocaleString('tr') + ' kutu · %' +
+        plan.ozet.hacimDoluluk.toFixed(1) + ' doluluk' +
+        (dogru ? ' (beklenen 1.440 ✓)' : ''));
+  } catch (h) {
+    yaz('mDurum', '<span style="color:var(--kirmizi)">yüklenemedi</span>');
+    yaz('mSonuc', String(h.message));
+  }
+
+  // ---- Cikis ----
+  document.getElementById('cikis').addEventListener('click', async () => {
+    await fetch('/api/cikis', { method: 'POST' });
+    location.replace('/giris');
+  });
+})();
+</script>
+</body>
+</html>

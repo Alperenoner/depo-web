@@ -1,0 +1,117 @@
+/* ==========================================================================
+   Giris sayfasi - kendi kendine yeterli (baska css'e bagli degil).
+   Bu dosya giris yapmadan da servis edilir, o yuzden ayri tutuluyor.
+   Renk paleti FAZ 3'te stil.css'e de tasinacak.
+   ========================================================================== */
+
+:root {
+  --zemin: #14161a;
+  --yuzey: #1d2026;
+  --kenar: #2c313a;
+  --yazi: #e6e8eb;
+  --soluk: #8b929d;
+  --vurgu: #4a9eff;
+  --vurgu-koyu: #2b7fdd;
+  --kirmizi: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--zemin);
+  color: var(--yazi);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+
+.kutu {
+  width: 100%;
+  max-width: 360px;
+  background: var(--yuzey);
+  border: 1px solid var(--kenar);
+  border-radius: 14px;
+  padding: 32px 28px 28px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+}
+
+.logo { font-size: 40px; line-height: 1; }
+
+h1 {
+  margin: 12px 0 2px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.alt {
+  margin: 0 0 26px;
+  color: var(--soluk);
+  font-size: 13px;
+}
+
+form { text-align: left; }
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soluk);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+input {
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 11px 13px;
+  background: var(--zemin);
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  color: var(--yazi);
+  font-size: 15px;
+  transition: border-color 0.15s;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--vurgu);
+}
+
+button {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px;
+  background: var(--vurgu);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button:hover:not(:disabled) { background: var(--vurgu-koyu); }
+
+button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.uyari {
+  margin: 18px 0 0;
+  padding: 10px 12px;
+  background: rgb(255 107 107 / 0.1);
+  border: 1px solid rgb(255 107 107 / 0.3);
+  border-radius: 8px;
+  color: var(--kirmizi);
+  font-size: 13px;
+  text-align: left;
+}

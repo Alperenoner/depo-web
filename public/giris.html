@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Giriş — DEPOLAMA</title>
+<link rel="stylesheet" href="/giris.css">
+</head>
+<body>
+
+<main class="kutu">
+  <div class="logo">📦</div>
+  <h1>DEPOLAMA</h1>
+  <p class="alt">Tır Yükleme Planlayıcı</p>
+
+  <form id="form" autocomplete="on" novalidate>
+    <label for="kullanici">Kullanıcı adı</label>
+    <input id="kullanici" name="username" type="text"
+           autocomplete="username" autocapitalize="off" spellcheck="false" required>
+
+    <label for="sifre">Şifre</label>
+    <input id="sifre" name="password" type="password"
+           autocomplete="current-password" required>
+
+    <button id="dugme" type="submit">Giriş Yap</button>
+  </form>
+
+  <p id="uyari" class="uyari" hidden role="alert"></p>
+</main>
+
+<script src="/giris.js"></script>
+</body>
+</html>
