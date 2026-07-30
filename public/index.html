@@ -166,8 +166,12 @@
                 aria-selected="true">🗺 Kuşbakışı</button>
         <button class="sekme" data-sekme="yandan" role="tab"
                 aria-selected="false">📐 Yandan Görünüm</button>
+        <button class="sekme" data-sekme="karsilastirma" role="tab"
+                aria-selected="false">⚖ Karşılaştırma</button>
+        <button class="sekme" data-sekme="liste" role="tab"
+                aria-selected="false">📋 Yükleme Listesi</button>
         <button class="sekme" data-sekme="bloklar" role="tab"
-                aria-selected="false">📋 Bloklar</button>
+                aria-selected="false">🧱 Bloklar</button>
       </nav>
 
       <!-- ---- kusbakisi ---- -->
@@ -197,6 +201,46 @@
         </p>
       </section>
 
+      <!-- ---- karsilastirma ---- -->
+      <section class="sekme-icerik" id="panelKarsilastirma" role="tabpanel" hidden>
+        <div class="kartlar" id="karsilastirmaKartlar"></div>
+        <p class="tuval-not">
+          Üç diziliş de aynı yükle hesaplanır. Bir karta tıklayınca o diziliş
+          seçilir ve bütün görünümler ona göre yenilenir.
+        </p>
+      </section>
+
+      <!-- ---- yukleme listesi ---- -->
+      <section class="sekme-icerik" id="panelListe" role="tabpanel" hidden>
+        <div class="liste-ust">
+          <button id="yazdir">🖨 Yazdır</button>
+          <span class="tuval-not" style="margin:0">
+            Sıra, aracın <strong>önünden</strong> arkaya doğrudur.
+          </span>
+        </div>
+
+        <!-- Yazdirinca ustbant ve gostergeler gizlendigi icin ozet burada
+             tekrar duruyor - ciktinin hangi araca ait oldugu belli olsun. -->
+        <div class="yazdir-basligi" id="listeBaslik"></div>
+
+        <div class="tablo-sarmal">
+          <table class="bloklar liste">
+            <thead>
+              <tr>
+                <th>Sıra</th>
+                <th>Kutu</th>
+                <th>Adet</th>
+                <th>Diziliş (nx×ny×nz)</th>
+                <th>Duruş (U×G×Y, cm)</th>
+                <th>Konum (m)</th>
+              </tr>
+            </thead>
+            <tbody id="listeGovde"></tbody>
+            <tfoot id="listeAlt"></tfoot>
+          </table>
+        </div>
+      </section>
+
       <!-- ---- blok listesi ---- -->
       <section class="sekme-icerik" id="panelBloklar" role="tabpanel" hidden>
         <div class="tablo-sarmal">
@@ -216,10 +260,10 @@
       </section>
 
       <p class="faz-not">
-        <strong>FAZ 3c</strong> — kuşbakışı, yandan kesit, katalog penceresi ve
-        plan kaydet/yükle çalışıyor. Karşılaştırma ve yazdırılabilir yükleme
-        listesi <strong>FAZ 3d</strong>'de gelecek. 3B görünüm
-        <strong>FAZ 4</strong>.
+        <strong>FAZ 3d</strong> — beş sekme, katalog ve planlar çalışıyor.
+        Kısayollar: <kbd>1</kbd>–<kbd>5</kbd> sekmeler, <kbd>K</kbd> katalog,
+        <kbd>P</kbd> planlar, <kbd>Esc</kbd> pencereyi kapat.
+        Sırada <strong>FAZ 4</strong> — 3B görünüm.
       </p>
     </div>
   </main>

@@ -445,6 +445,120 @@ button.tam { width: 100%; }
   color: var(--soluk);
 }
 
+/* ------------------------------------------------------ karsilastirma kartlari */
+
+.kartlar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.kart {
+  background: var(--yuzey);
+  border: 1px solid var(--kenar);
+  border-radius: 10px;
+  padding: 14px 15px 15px;
+  text-align: left;
+  font: inherit;
+  color: var(--yazi);
+  cursor: pointer;
+  position: relative;
+}
+
+.kart:hover { border-color: var(--vurgu); background: var(--yuzey2); }
+
+/* Su an secili olan dizilis */
+.kart.secili { border-color: var(--vurgu); box-shadow: 0 0 0 1px var(--vurgu); }
+
+.kart .kart-ad {
+  font-weight: 650;
+  font-size: 13.5px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kart .rozet {
+  background: var(--yesil);
+  color: #10240f;
+  border-radius: 9px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.kart .rozet.simdiki {
+  background: var(--vurgu);
+  color: #04182e;
+}
+
+.kart .buyuk {
+  font-size: 24px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.kart .buyuk-alt {
+  font-size: 11.5px;
+  color: var(--soluk);
+  margin-bottom: 10px;
+}
+
+.kart dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 10px;
+  font-size: 12px;
+}
+
+.kart dt { color: var(--soluk); }
+.kart dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* En iyiye gore fark - eksi ise kirmizi, esitse notr */
+.kart .fark.eksi { color: var(--kirmizi); }
+.kart .fark.esit { color: var(--yesil); }
+.kart .sigmayan { color: var(--kirmizi); }
+
+/* --------------------------------------------------------- yukleme listesi */
+
+.liste-ust {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.yazdir-basligi {
+  border: 1px solid var(--kenar);
+  border-radius: 9px;
+  padding: 11px 13px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--soluk);
+}
+
+.yazdir-basligi strong { color: var(--yazi); }
+
+.yazdir-basligi .satir { display: flex; gap: 18px; flex-wrap: wrap; }
+
+/* Kutu adi bu tabloda 2. kolonda - basligi da sola yatmali
+   (table.bloklar yalnizca 1. kolonu sola aliyor). */
+table.liste th:nth-child(2),
+table.liste td:nth-child(2) { text-align: left; }
+
+table.liste tfoot td {
+  font-weight: 650;
+  color: var(--yazi);
+  border-top: 1px solid var(--kenar);
+  border-bottom: none;
+}
+
 /* --------------------------------------------------------------- blok tablo */
 
 .tablo-sarmal { overflow-x: auto; }
@@ -513,6 +627,17 @@ table.bloklar .kutu-ad { display: flex; align-items: center; gap: 7px; }
   border-radius: 8px;
   font-size: 12.5px;
   color: var(--soluk);
+}
+
+.faz-not kbd {
+  background: var(--yuzey2);
+  border: 1px solid var(--kenar);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--yazi);
 }
 
 /* ----------------------------------------------------------------- pencere  */
@@ -613,6 +738,82 @@ table.bloklar .isaret { color: var(--soluk); }
 }
 
 .plan-uyari button { margin-top: 9px; }
+
+/* ----------------------------------------------------------------- yazdirma */
+
+/* Kagida basarken arayuzun kendisi (panel, sekmeler, dugmeler) gitmeli;
+   yalnizca ACIK olan sekmenin icerigi kalir. Hangi sekmede olursan onu
+   basar - yukleme listesi de, kusbakisi tuvali de. */
+
+@media print {
+  /* Paleti KOKUNDEN cevir. Tek tek kural yamamak yerine degiskenleri
+     degistiriyoruz; yoksa `color: var(--yazi)` yazan her kural beyaz kagida
+     beyaza yakin bir yaziyla basiyor. (TOPLAM satiri tam boyle kayboldu.) */
+  :root {
+    --zemin: #fff;
+    --yuzey: #fff;
+    --yuzey2: #f2f2f2;
+    --kenar: #999;
+    --yazi: #000;
+    --soluk: #555;
+    --vurgu: #000;
+    --vurgu-koyu: #000;
+    --kirmizi: #a00;
+    --yesil: #060;
+    --sari: #855;
+  }
+
+  /* Ekran duzeni izgara + overflow:hidden; kagitta ikisi de ise yaramaz */
+  body {
+    display: block;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  .ustbant,
+  .gostergeler,
+  .panel,
+  .sekmeler,
+  .liste-ust,
+  .tuval-ust,
+  .tuval-not,
+  .faz-not,
+  .perde,
+  .kartlar .kart:not(.secili) { display: none !important; }
+
+  .govde { display: block; }
+  .alan { overflow: visible; padding: 0; }
+  .tablo-sarmal { overflow: visible; }
+
+  .yazdir-basligi { margin-bottom: 10px; }
+
+  table.bloklar { font-size: 10pt; }
+
+  table.bloklar th {
+    background: #eee;
+    border-bottom: 1px solid #999;
+  }
+
+  table.bloklar td { border-bottom: 1px solid #ddd; }
+
+  /* Renk benegi mürekkep tasarrufu icin cerceveye donusur; yazicilar
+     arka plan rengini varsayilan olarak basmiyor. */
+  .benek {
+    border: 1px solid #000;
+    background: none !important;
+  }
+
+  /* Satirlar sayfa arasinda bolunmesin */
+  table.bloklar tr { page-break-inside: avoid; }
+  thead { display: table-header-group; } /* her sayfada baslik tekrarlansin */
+
+  .tuval-sarmal { border: none; padding: 0; }
+  canvas { max-width: 100%; }
+
+  @page { margin: 14mm; }
+}
 
 /* --------------------------------------------------------------- duzen dar  */
 

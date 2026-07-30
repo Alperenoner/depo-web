@@ -559,9 +559,13 @@
   //  HESAP  (tarayicida, sunucuya gitmeden)
   // ===========================================================================
 
-  function hesapla() {
-    const arac = D.aracAktif;
-    const kalemler = D.kalemler
+  /**
+   * Yuk listesini motorun bekledigi bicime cevirir.
+   * Karsilastirma sekmesi de ayni listeyi kullaniyor - iki yerde ayri
+   * kurulursa biri unutulur ve sekmeler farkli sonuc gosterir.
+   */
+  function motorKalemleri() {
+    return D.kalemler
       .map((k) => {
         const kutu = D.kutular.find((x) => x.id === k.kutuId);
         if (!kutu) return null;
@@ -571,6 +575,11 @@
       .filter(Boolean)
       // Adedi 0 olan kalem motoru mesgul etmesin
       .filter((k) => k.maks || k.adet > 0);
+  }
+
+  function hesapla() {
+    const arac = D.aracAktif;
+    const kalemler = motorKalemleri();
 
     // Arac yoksa ya da yuk yoksa hesap yapilmaz
     if (!arac || kalemler.length === 0) {
@@ -606,6 +615,9 @@
     katmanlariYenile();
     cizimYenile();
     planKaydetDenetle();
+    // Acik olan sekme yenilenmeli; kapalilar sekmeSec'te hesaplanacak
+    if (D.sekme === 'karsilastirma') karsilastirmaCiz();
+    if (D.sekme === 'liste') listeCiz();
     // Optimum hangi durusu sectigi plana bagli - her hesaptan sonra yenilenir
     stratejiAciklamaYaz();
   }
@@ -723,8 +735,13 @@
   const PANELLER = {
     kusbakisi: 'panelKusbakisi',
     yandan: 'panelYandan',
+    karsilastirma: 'panelKarsilastirma',
+    liste: 'panelListe',
     bloklar: 'panelBloklar',
   };
+
+  // Klavye: sekmeler 1..5, pencereler K ve P. Sira sekme cubugundakiyle ayni.
+  const SEKME_SIRASI = ['kusbakisi', 'yandan', 'karsilastirma', 'liste', 'bloklar'];
 
   function sekmeSec(ad) {
     if (!PANELLER[ad]) return;
@@ -739,9 +756,21 @@
       gorunur($(PANELLER[anahtar]), anahtar === ad);
     }
 
+    // Sekme adresi URL'de dursun: sayfa yenilenince ayni sekme acilir,
+    // baglanti paylasilabilir. Gecmise yeni kayit EKLEMEZ - geri tusu
+    // sekmeler arasinda dolasmaya donmesin.
+    try {
+      const adres = new URL(location.href);
+      adres.searchParams.set('sekme', ad);
+      history.replaceState(null, '', adres);
+    } catch (h) { /* dosya:// gibi ortamlarda onemsiz */ }
+
     // Gizli tuvalin kapsayicisinin genisligi 0'dir, o yuzden gizliyken
     // cizilemez. Sekme goruntuye gelince cizim burada yapilir.
     cizimYenile();
+    // Karsilastirma pahali (11 yerlesim hesabi) - yalnizca gorunurken
+    if (ad === 'karsilastirma') karsilastirmaCiz();
+    if (ad === 'liste') listeCiz();
   }
 
   // ---- katman kaydiricisi ----
@@ -799,16 +828,213 @@
     });
   }
 
-  function cizimHemen() {
+  function cizimHemen(kagit) {
     if (!D.plan || !D.aracAktif) return;
 
     if (D.sekme === 'kusbakisi') {
       const kesitZ = D.katmanIndis > 0 ? D.katmanlar[D.katmanIndis - 1] : null;
-      Cizim.kusbakisi($('tuvalKus'), D.plan, D.aracAktif, { kesitZ });
+      Cizim.kusbakisi($('tuvalKus'), D.plan, D.aracAktif, { kesitZ, kagit: !!kagit });
     } else if (D.sekme === 'yandan') {
-      Cizim.yandan($('tuvalYan'), D.plan, D.aracAktif);
+      Cizim.yandan($('tuvalYan'), D.plan, D.aracAktif, { kagit: !!kagit });
     }
-    // 'bloklar' sekmesi tablo - cizim gerekmiyor
+    // karsilastirma / liste / bloklar sekmeleri HTML - cizim gerekmiyor
+  }
+
+  // ===========================================================================
+  //  KARSILASTIRMA  (FAZ 3d)
+  //
+  //  Uc dizilisi ayni yukle hesaplar ve yan yana koyar. Pahali bir is:
+  //  hepsiniHesapla 3 strateji calistiriyor, biri optimum oldugu icin toplam
+  //  11 yerlesim hesabi. O yuzden yalnizca sekme gorunurken cagriliyor.
+  // ===========================================================================
+
+  function karsilastirmaCiz() {
+    const yer = $('karsilastirmaKartlar');
+    yer.innerHTML = '';
+
+    if (!D.plan || !D.aracAktif) return;
+
+    const kalemler = motorKalemleri();
+    if (kalemler.length === 0) return;
+
+    const sonuclar = Yerlesim.hepsiniHesapla(D.aracAktif, kalemler, {
+      pay: D.ayar.pay,
+    });
+
+    for (const s of sonuclar) {
+      const kart = document.createElement('button');
+      kart.type = 'button';
+      kart.className = 'kart' + (s.id === D.ayar.strateji ? ' secili' : '');
+      kart.title = s.aciklama;
+
+      const ad = document.createElement('div');
+      ad.className = 'kart-ad';
+      ad.appendChild(document.createTextNode(s.ad));
+      if (s.enIyi) {
+        const rozet = document.createElement('span');
+        rozet.className = 'rozet';
+        rozet.textContent = 'EN İYİ';
+        ad.appendChild(rozet);
+      }
+      if (s.id === D.ayar.strateji) {
+        const rozet = document.createElement('span');
+        rozet.className = 'rozet simdiki';
+        rozet.textContent = 'SEÇİLİ';
+        ad.appendChild(rozet);
+      }
+      kart.appendChild(ad);
+
+      const buyuk = document.createElement('div');
+      buyuk.className = 'buyuk';
+      buyuk.textContent = sayiYaz(s.adet);
+      kart.appendChild(buyuk);
+
+      const buyukAlt = document.createElement('div');
+      buyukAlt.className = 'buyuk-alt';
+      buyukAlt.textContent = 'kutu yerleşti';
+      kart.appendChild(buyukAlt);
+
+      const dl = document.createElement('dl');
+      const satir = (etiket, deger, sinifAd) => {
+        const dt = document.createElement('dt');
+        dt.textContent = etiket;
+        const dd = document.createElement('dd');
+        dd.textContent = deger;
+        if (sinifAd) dd.className = sinifAd;
+        dl.appendChild(dt);
+        dl.appendChild(dd);
+      };
+
+      satir('Hacim doluluğu', '%' + sayiYaz(s.doluluk, 1));
+      satir('Blok sayısı', sayiYaz(s.plan.ozet.blokSayisi));
+      satir('Kullanılan uzunluk', metre(s.plan.ozet.kullanilanUzunluk) + ' m');
+
+      // En iyiye gore fark
+      satir(
+        'En iyiye göre',
+        s.enIyi ? 'en iyi' : '%' + sayiYaz(s.fark, 1),
+        s.enIyi ? 'fark esit' : 'fark eksi'
+      );
+
+      const sigmayan = (s.plan.sigmayanlar || [])
+        .reduce((t, x) => t + x.kalan, 0);
+      if (sigmayan > 0) satir('Sığmayan', sayiYaz(sigmayan) + ' kutu', 'sigmayan');
+
+      kart.appendChild(dl);
+
+      // Karta tiklamak o dizilisi secer - butun gorunumler yenilenir
+      kart.addEventListener('click', () => {
+        if (s.id === D.ayar.strateji) return;
+        D.ayar.strateji = s.id;
+        $('stratejiSec').value = s.id;
+        stratejiAciklamaYaz();
+        hesapla();
+        karsilastirmaCiz();
+      });
+
+      yer.appendChild(kart);
+    }
+  }
+
+  // ===========================================================================
+  //  YUKLEME LISTESI  (FAZ 3d)
+  //
+  //  Depoda elde tutulacak kagit. Sira aracin ONUNDEN arkaya: once x'e, esitse
+  //  y'ye, sonra z'ye gore. Motorun blok sirasi yerlestirme sirasidir ama
+  //  yukleyen kisi icin anlamli olan konum sirasi.
+  // ===========================================================================
+
+  function listeCiz() {
+    const govde = $('listeGovde');
+    const alt = $('listeAlt');
+    govde.innerHTML = '';
+    alt.innerHTML = '';
+    $('listeBaslik').innerHTML = '';
+
+    if (!D.plan || !D.aracAktif) return;
+
+    const o = D.plan.ozet;
+    const a = D.aracAktif;
+    const st = Yerlesim.STRATEJILER.find((x) => x.id === D.ayar.strateji);
+
+    // ---- yazdirma basligi ----
+    const bas = $('listeBaslik');
+    const satirlar = [
+      ['Araç', a.ad + ' · ' + olcuMetni(a.uzunluk, a.genislik, a.yukseklik)],
+      ['Diziliş', st ? st.ad : D.ayar.strateji],
+      ['Toplam', sayiYaz(o.toplamAdet) + ' kutu · ' +
+                 sayiYaz(o.blokSayisi) + ' blok · %' + sayiYaz(o.hacimDoluluk, 1) +
+                 ' doluluk'],
+      ['Yük', metre(o.kullanilanUzunluk) + ' m uzunluk · ' +
+              metre(o.yukYuksekligi) + ' m yükseklik'],
+      ['Tarih', tarihYaz(new Date())],
+    ];
+    if (D.ayar.pay > 0) {
+      satirlar.splice(2, 0, ['Kutular arası pay', cmYaz(D.ayar.pay) + ' cm']);
+    }
+    for (const [etiket, deger] of satirlar) {
+      const sat = document.createElement('div');
+      sat.className = 'satir';
+      const e = document.createElement('span');
+      e.textContent = etiket + ':';
+      const d = document.createElement('strong');
+      d.textContent = deger;
+      sat.appendChild(e);
+      sat.appendChild(d);
+      bas.appendChild(sat);
+    }
+
+    // ---- satirlar ----
+    const sirali = (D.plan.bloklar || []).slice().sort((p, q) =>
+      p.x - q.x || p.y - q.y || p.z - q.z);
+
+    sirali.forEach((b, i) => {
+      const tr = document.createElement('tr');
+
+      const hucre = (metinDeger) => {
+        const td = document.createElement('td');
+        td.textContent = metinDeger;
+        tr.appendChild(td);
+      };
+
+      hucre(String(i + 1));
+
+      const adHucre = document.createElement('td');
+      const sarmal = document.createElement('div');
+      sarmal.className = 'kutu-ad';
+      const benek = document.createElement('span');
+      benek.className = 'benek';
+      benek.style.background = (b.kutu && b.kutu.renk) || '#888';
+      sarmal.appendChild(benek);
+      sarmal.appendChild(document.createTextNode((b.kutu && b.kutu.ad) || b.kutuId));
+      adHucre.appendChild(sarmal);
+      tr.appendChild(adHucre);
+
+      hucre(sayiYaz(b.adet));
+      hucre(b.nx + ' × ' + b.ny + ' × ' + b.nz);
+      hucre(cmYaz(b.ku) + '×' + cmYaz(b.kg) + '×' + cmYaz(b.ky) + ' ' + b.durusAd);
+      // Blogun kapladigi uzunluk araligi - yukleyen kisi nereye koyacagini bilsin
+      hucre(metre(b.x) + ' – ' + metre(b.x + b.nx * b.adimU));
+
+      govde.appendChild(tr);
+    });
+
+    // ---- toplam ----
+    if (sirali.length) {
+      const tr = document.createElement('tr');
+      const bosluk = document.createElement('td');
+      bosluk.colSpan = 2;
+      bosluk.textContent = 'TOPLAM (' + sayiYaz(sirali.length) + ' blok)';
+      tr.appendChild(bosluk);
+      const toplam = document.createElement('td');
+      toplam.textContent = sayiYaz(o.toplamAdet);
+      tr.appendChild(toplam);
+      const kalan = document.createElement('td');
+      kalan.colSpan = 3;
+      kalan.textContent = '';
+      tr.appendChild(kalan);
+      alt.appendChild(tr);
+    }
   }
 
   // ===========================================================================
@@ -1279,6 +1505,16 @@
       location.replace('/giris');
     });
 
+    // -- yazdirma --
+    // Ekrandaki her seyi degil ACIK SEKMEYI basar (bkz. stil.css @media print)
+    $('yazdir').addEventListener('click', () => window.print());
+
+    // Tuval bir BITMAP: @media print kurallari icine islemiyor, koyu zemin
+    // oldugu gibi kagida gidiyordu. Basmadan once beyaz paletle yeniden
+    // cizilir, bittikten sonra ekran paletine dondurulur.
+    window.addEventListener('beforeprint', () => cizimHemen(true));
+    window.addEventListener('afterprint', () => cizimHemen(false));
+
     // -- katalog penceresi --
     $('katalogAc').addEventListener('click', katalogAc);
     $('katalogKapat').addEventListener('click',
@@ -1309,6 +1545,38 @@
       for (const id of LISTE_PERDELERI) gorunur($(id), false);
     });
 
+    // -- klavye kisayollari --
+    //
+    // 1..5 sekmeler, K katalog, P planlar, Esc kapat (yukarida).
+    // Kullanici bir alana YAZARKEN devre disi - yoksa kutu adina "1" yazmak
+    // sekme degistiriyor. Degistirici tuslu birlesimler de es gecilir
+    // (Cmd+P yazicinin kendisi, Ctrl+1 tarayici sekmesi).
+    document.addEventListener('keydown', (o) => {
+      if (o.ctrlKey || o.metaKey || o.altKey) return;
+
+      const hedef = o.target;
+      const etiket = hedef && hedef.tagName;
+      if (etiket === 'INPUT' || etiket === 'SELECT' || etiket === 'TEXTAREA' ||
+          (hedef && hedef.isContentEditable)) {
+        return;
+      }
+
+      // Bir pencere acikken sekme gezmek anlamsiz
+      const pencereAcik = FORM_PERDELERI.concat(LISTE_PERDELERI)
+        .some((id) => !$(id).hidden);
+
+      if (o.key >= '1' && o.key <= String(SEKME_SIRASI.length)) {
+        if (pencereAcik || $('sonuc').hidden) return;
+        sekmeSec(SEKME_SIRASI[Number(o.key) - 1]);
+        o.preventDefault();
+        return;
+      }
+
+      const harf = o.key.toLowerCase();
+      if (harf === 'k' && !pencereAcik) { katalogAc(); o.preventDefault(); }
+      else if (harf === 'p' && !pencereAcik) { planlariAc(); o.preventDefault(); }
+    });
+
     for (const id of FORM_PERDELERI.concat(LISTE_PERDELERI)) {
       $(id).addEventListener('click', (o) => {
         if (o.target === $(id)) gorunur($(id), false);
@@ -1331,6 +1599,15 @@
     olaylariBagla();
     stratejileriCiz();
     gostergeleriBosalt();
+
+    // ?sekme=... ile gelen adres o sekmeyi acar (sekmeSec URL'e kendisi yaziyor,
+    // yani sayfa yenilenince kullanicinin kaldigi sekme geri gelir).
+    // veriYukle'den ONCE cagriliyor: hesapla() dogru sekmeyi cizsin.
+    try {
+      const istenen = new URL(location.href).searchParams.get('sekme');
+      if (istenen && PANELLER[istenen]) sekmeSec(istenen);
+    } catch (h) { /* adres cozulemezse varsayilan sekme kalir */ }
+
     try {
       await veriYukle();
     } catch (h) {

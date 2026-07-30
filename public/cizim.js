@@ -46,7 +46,27 @@
 
   let R = null;
 
-  function renkler() {
+  // Kagit paleti. Yaziciya basarken ekranin koyu zeminini basmak hem murekkep
+  // israfi hem okunmaz; ustelik tuval bir bitmap oldugu icin stil.css'teki
+  // @media print kurallari ONA ISLEMIYOR - cizim yeniden yapilmali.
+  //
+  // Palet burada ELLE yaziliyor, @media print'ten okunmuyor: `beforeprint`
+  // aninda getComputedStyle henuz yazdirma kurallarini yansitmiyor, o yuzden
+  // medya sorgusuna guvenmek guvenilmez.
+  const KAGIT = {
+    zemin: '#ffffff',
+    yuzey: '#ffffff',
+    yuzey2: '#f2f2f2',
+    kenar: '#999999',
+    yazi: '#000000',
+    soluk: '#555555',
+    vurgu: '#000000',
+    sari: '#885500',
+  };
+
+  /** @param {boolean} [kagitMi] true ise yazici paleti doner */
+  function renkler(kagitMi) {
+    if (kagitMi) return KAGIT;
     if (R) return R;
     const s = getComputedStyle(document.documentElement);
     const al = (ad, yedek) => s.getPropertyValue(ad).trim() || yedek;
@@ -84,9 +104,10 @@
    * @param {HTMLCanvasElement} tuval
    * @param {number} enMm   yatay eksende cizilecek olcu (arac uzunlugu)
    * @param {number} boyMm  dusey eksende cizilecek olcu (genislik / yukseklik)
+   * @param {Object} renk   kullanilacak palet (ekran ya da kagit)
    * @returns {Object|null} kapsayici henuz gorunmuyorsa null
    */
-  function sahneKur(tuval, enMm, boyMm) {
+  function sahneKur(tuval, enMm, boyMm, renk) {
     const kapsayici = tuval.parentElement;
     // clientWidth ic dolguyu (padding) da sayiyor; onu cikarmazsak tuval
     // sarmalindan dolgu kadar tasar ve sag kenari kirpilir.
@@ -129,6 +150,9 @@
 
     return {
       c, olcek, sol, ust, cizimGen, cizimYuk, cssGen, cssYuk,
+      // Palet sahnenin parcasi: olcu/etiket yardimcilari paleti buradan alir,
+      // yoksa her biri renkler()'i kendi cagirip ekran paletine dususuyordu.
+      renk,
       px: (x) => sol + x * olcek,
       // Dusey eksen: kusbakisinda yukaridan asagi (genislik), yandan
       // gorunumde asagidan yukari (yukseklik) - ikisi ayri kurulur.
@@ -171,24 +195,23 @@
   }
 
   /** Yatay olcu cizgisi: iki ucta tirnak, ortada zemine oturan etiket. */
-  function olcuYatay(s, x1, x2, y, metin, renk, vurgulu) {
-    const { c } = s;
-    const R2 = renkler();
-    c.strokeStyle = renk || R2.kenar;
+  function olcuYatay(s, x1, x2, y, metin, cizgiRenk, vurgulu) {
+    const { c, renk } = s;
+    c.strokeStyle = cizgiRenk || renk.kenar;
     c.lineWidth = 1;
     c.beginPath();
     c.moveTo(x1 + 0.5, y - 4); c.lineTo(x1 + 0.5, y + 4);
     c.moveTo(x2 - 0.5, y - 4); c.lineTo(x2 - 0.5, y + 4);
     c.moveTo(x1, y + 0.5); c.lineTo(x2, y + 0.5);
     c.stroke();
-    etiket(c, metin, (x1 + x2) / 2, y, vurgulu ? R2.yazi : R2.soluk, vurgulu);
+    etiket(c, renk, metin, (x1 + x2) / 2, y,
+           vurgulu ? renk.yazi : renk.soluk, vurgulu);
   }
 
   /** Dusey olcu cizgisi. Yazi 90 derece dondurulur. */
-  function olcuDikey(s, y1, y2, x, metin, renk, vurgulu) {
-    const { c } = s;
-    const R2 = renkler();
-    c.strokeStyle = renk || R2.kenar;
+  function olcuDikey(s, y1, y2, x, metin, cizgiRenk, vurgulu) {
+    const { c, renk } = s;
+    c.strokeStyle = cizgiRenk || renk.kenar;
     c.lineWidth = 1;
     c.beginPath();
     c.moveTo(x - 4, y1 + 0.5); c.lineTo(x + 4, y1 + 0.5);
@@ -199,16 +222,15 @@
     c.save();
     c.translate(x, (y1 + y2) / 2);
     c.rotate(-Math.PI / 2);
-    etiket(c, metin, 0, 0, vurgulu ? R2.yazi : R2.soluk, vurgulu);
+    etiket(c, renk, metin, 0, 0, vurgulu ? renk.yazi : renk.soluk, vurgulu);
     c.restore();
   }
 
   /** Cizgiyi keserek zemine oturan kucuk yazi. */
-  function etiket(c, metin, x, y, yaziRenk, kalin) {
-    const R2 = renkler();
+  function etiket(c, renk, metin, x, y, yaziRenk, kalin) {
     c.font = kalin ? YAZI_KALIN : YAZI;
     const g = c.measureText(metin).width;
-    c.fillStyle = R2.zemin;
+    c.fillStyle = renk.zemin;
     c.fillRect(x - g / 2 - 4, y - 7, g + 8, 14);
     c.fillStyle = yaziRenk;
     c.textAlign = 'center';
@@ -290,15 +312,16 @@
    * @param {HTMLCanvasElement} tuval
    * @param {Object} plan   Yerlesim.planla() sonucu
    * @param {Object} arac   {uzunluk, genislik, yukseklik} (mm)
-   * @param {Object} ayar   {kesitZ: number|null}  null = butun katmanlar
+   * @param {Object} ayar   {kesitZ: number|null, kagit: boolean}
+   *                        kesitZ null = butun katmanlar; kagit = yazici paleti
    * @returns {boolean} cizildi mi
    */
   function kusbakisi(tuval, plan, arac, ayar) {
-    const renk = renkler();
+    const renk = renkler(ayar && ayar.kagit);
     const U = Number(arac && arac.uzunluk) || 0;
     const G = Number(arac && arac.genislik) || 0;
 
-    const s = sahneKur(tuval, U, G);
+    const s = sahneKur(tuval, U, G, renk);
     if (!s) return false;
 
     const kesitZ = ayar && ayar.kesitZ !== undefined ? ayar.kesitZ : null;
@@ -388,14 +411,15 @@
    * @param {HTMLCanvasElement} tuval
    * @param {Object} plan
    * @param {Object} arac  {uzunluk, genislik, yukseklik} (mm)
+   * @param {Object} [ayar] {kagit: boolean} yazici paleti
    * @returns {boolean} cizildi mi
    */
-  function yandan(tuval, plan, arac) {
-    const renk = renkler();
+  function yandan(tuval, plan, arac, ayar) {
+    const renk = renkler(ayar && ayar.kagit);
     const U = Number(arac && arac.uzunluk) || 0;
     const Y = Number(arac && arac.yukseklik) || 0;
 
-    const s = sahneKur(tuval, U, Y);
+    const s = sahneKur(tuval, U, Y, renk);
     if (!s) return false;
 
     kasaCiz(s, renk);
