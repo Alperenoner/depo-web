@@ -1,7 +1,9 @@
 /* ==========================================================================
-   DEPOLAMA - arayuz mantigi  (FAZ 3a)
+   DEPOLAMA - arayuz mantigi  (FAZ 3a + 3b)
 
-   Sorumlulugu: form -> motor -> gostergeler. Cizim YOK (FAZ 3b-3d).
+   Sorumlulugu: form -> motor -> gostergeler -> cizim.
+   Cizgi ciken isler cizim.js'te; burada sadece hangi sekmenin gorundugu ve
+   hangi katmanin secildigi tutulur.
 
    Iki kural:
    1) HAZIR OLCU YOKTUR. Arac ve kutu olculeri tamamen kullanicidan gelir,
@@ -30,6 +32,13 @@
     // icin motorun kapasite kontrolu kendiliginden devre disi kaliyor.
     ayar: { strateji: 'optimum', pay: 0 },
     plan: null,
+
+    // ---- FAZ 3b: gorunum durumu ----
+    sekme: 'kusbakisi',
+    // Plandaki farkli kat yukseklikleri (mm), artan sirada
+    katmanlar: [],
+    // 0 = butun katmanlar; 1..n = katmanlar[indis-1]
+    katmanIndis: 0,
   };
 
   // Yeni kutulara sirayla atanan renkler (kullanici sonra degistirebilir)
@@ -569,6 +578,8 @@
     gostergeleriYaz(D.plan.ozet);
     uyariYaz(D.plan.sigmayanlar);
     bloklariYaz(D.plan.bloklar);
+    katmanlariYenile();
+    cizimYenile();
     // Optimum hangi durusu sectigi plana bagli - her hesaptan sonra yenilenir
     stratejiAciklamaYaz();
   }
@@ -677,6 +688,104 @@
   }
 
   // ===========================================================================
+  //  SEKMELER + 2B CIZIMLER  (FAZ 3b)
+  //
+  //  FAZ 3c (katalog / plan kaydet) ve 3d (karsilastirma / yukleme listesi)
+  //  bu tabloya yeni satir ekleyerek genisleyecek.
+  // ===========================================================================
+
+  const PANELLER = {
+    kusbakisi: 'panelKusbakisi',
+    yandan: 'panelYandan',
+    bloklar: 'panelBloklar',
+  };
+
+  function sekmeSec(ad) {
+    if (!PANELLER[ad]) return;
+    D.sekme = ad;
+
+    for (const dugme of document.querySelectorAll('.sekme')) {
+      const etkin = dugme.dataset.sekme === ad;
+      dugme.classList.toggle('etkin', etkin);
+      dugme.setAttribute('aria-selected', etkin ? 'true' : 'false');
+    }
+    for (const anahtar of Object.keys(PANELLER)) {
+      gorunur($(PANELLER[anahtar]), anahtar === ad);
+    }
+
+    // Gizli tuvalin kapsayicisinin genisligi 0'dir, o yuzden gizliyken
+    // cizilemez. Sekme goruntuye gelince cizim burada yapilir.
+    cizimYenile();
+  }
+
+  // ---- katman kaydiricisi ----
+
+  function katmanlariYenile() {
+    D.katmanlar = D.plan ? Cizim.katmanlar(D.plan.bloklar) : [];
+
+    const kaydirici = $('katmanKaydirici');
+    const n = D.katmanlar.length;
+    kaydirici.max = String(n);
+    // Yeni plan daha az katmanliysa secim tasabilir - "Tumu"ye don
+    if (D.katmanIndis > n) D.katmanIndis = 0;
+    kaydirici.value = String(D.katmanIndis);
+    kaydirici.disabled = n === 0;
+
+    katmanEtiketYaz();
+  }
+
+  function katmanEtiketYaz() {
+    const el = $('katmanEtiket');
+    const n = D.katmanlar.length;
+
+    if (n === 0) { el.textContent = 'katman yok'; return; }
+    if (D.katmanIndis === 0) {
+      el.textContent = 'Tümü — ' + n + ' katman';
+      return;
+    }
+
+    // Kesitin kapladigi yukseklik araligi: kesiti kesen kutularin en tepesi.
+    // Ayni katta farkli boyda kutular olabilir, o yuzden tek tek bakiliyor.
+    const z = D.katmanlar[D.katmanIndis - 1];
+    let tepe = z;
+    for (const b of D.plan.bloklar) {
+      const k = Cizim.katmanKati(b, z);
+      if (k >= 0) tepe = Math.max(tepe, b.z + k * b.adimY + b.ky);
+    }
+
+    el.textContent = 'Katman ' + D.katmanIndis + ' / ' + n + ' · ' +
+                     cmYaz(z) + '–' + cmYaz(tepe) + ' cm';
+  }
+
+  // ---- cizim ----
+  //
+  // Kaydirici surukleme ve pencere boyutlandirma saniyede onlarca olay
+  // uretiyor; her birinde yeniden cizmek gereksiz. Kare basina bir cizim.
+
+  let cizimBekliyor = false;
+
+  function cizimYenile() {
+    if (cizimBekliyor) return;
+    cizimBekliyor = true;
+    requestAnimationFrame(() => {
+      cizimBekliyor = false;
+      cizimHemen();
+    });
+  }
+
+  function cizimHemen() {
+    if (!D.plan || !D.aracAktif) return;
+
+    if (D.sekme === 'kusbakisi') {
+      const kesitZ = D.katmanIndis > 0 ? D.katmanlar[D.katmanIndis - 1] : null;
+      Cizim.kusbakisi($('tuvalKus'), D.plan, D.aracAktif, { kesitZ });
+    } else if (D.sekme === 'yandan') {
+      Cizim.yandan($('tuvalYan'), D.plan, D.aracAktif);
+    }
+    // 'bloklar' sekmesi tablo - cizim gerekmiyor
+  }
+
+  // ===========================================================================
   //  OLAYLAR
   // ===========================================================================
 
@@ -732,6 +841,32 @@
       D.ayar.pay = mm === null ? 0 : Math.min(Math.max(mm, 0), ust);
       hesapla();
     });
+    // -- sekmeler --
+    for (const dugme of document.querySelectorAll('.sekme')) {
+      dugme.addEventListener('click', () => sekmeSec(dugme.dataset.sekme));
+    }
+
+    // -- katman kaydiricisi --
+    $('katmanKaydirici').addEventListener('input', () => {
+      D.katmanIndis = Number($('katmanKaydirici').value) || 0;
+      katmanEtiketYaz();
+      cizimYenile();
+    });
+
+    $('katmanSifirla').addEventListener('click', () => {
+      D.katmanIndis = 0;
+      $('katmanKaydirici').value = '0';
+      katmanEtiketYaz();
+      cizimYenile();
+    });
+
+    // Ana alanin genisligi cizimin olcegini belirliyor - degisince yenilenmeli
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(cizimYenile).observe(document.querySelector('.alan'));
+    } else {
+      window.addEventListener('resize', cizimYenile);
+    }
+
     // -- cikis --
     $('cikis').addEventListener('click', async () => {
       await fetch('/api/cikis', { method: 'POST' });
@@ -756,9 +891,11 @@
   // ===========================================================================
 
   async function baslat() {
-    if (typeof Yerlesim === 'undefined') {
+    if (typeof Yerlesim === 'undefined' || typeof Cizim === 'undefined') {
+      const eksik = typeof Yerlesim === 'undefined' ? 'Motor (yerlesim.js)'
+                                                    : 'Çizim (cizim.js)';
       document.body.innerHTML =
-        '<p style="padding:40px;color:#ff6b6b">Motor (yerlesim.js) yüklenemedi.</p>';
+        '<p style="padding:40px;color:#ff6b6b">' + eksik + ' yüklenemedi.</p>';
       return;
     }
     olaylariBagla();

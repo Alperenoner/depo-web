@@ -1,5 +1,5 @@
 /* ==========================================================================
-   DEPOLAMA - ana uygulama stili  (FAZ 3a)
+   DEPOLAMA - ana uygulama stili  (FAZ 3a + 3b)
 
    Renk paleti giris.css ile AYNI - iki dosya birbirinden bagimsiz durur
    cunku giris.css giris yapmadan da servis edilir.
@@ -25,6 +25,17 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Kendi verdigimiz `display` degeri tarayicinin [hidden] { display: none }
+   kuralini yeniyor - author stylesheet her zaman UA stylesheet'i gecer. Bu
+   yuzden `display` tanimlanan bir ogeye `hidden` koymak ISLEMIYORDU:
+   .bosluk-mesaj (grid) hic gizlenmiyor, height:100% ile sonuc alanini
+   ekranin altina itiyordu; label.sat (block) yuzunden "Sablonlarim" satiri
+   hic sablon yokken de gorunuyordu.
+
+   Tek tek kapatmak yerine kural global: bundan sonra eklenecek ogeler de
+   ayni tuzaga dusmez. `gorunur()` yardimcisi buna guveniyor. */
+[hidden] { display: none !important; }
 
 html, body { height: 100%; }
 
@@ -345,6 +356,95 @@ button.tam { width: 100%; }
 
 .uyari ul { margin: 6px 0 0; padding-left: 20px; }
 
+/* ------------------------------------------------------------------ sekmeler */
+
+.sekmeler {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--kenar);
+  margin-bottom: 14px;
+}
+
+.sekme {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 14px;
+  color: var(--soluk);
+  font-weight: 450;
+  /* Cubugun altindaki cizgiyi ortmek icin 1px asagi tasar */
+  margin-bottom: -1px;
+}
+
+.sekme:hover:not(.etkin) { background: var(--yuzey); color: var(--yazi); }
+
+.sekme.etkin {
+  background: var(--zemin);
+  border-color: var(--kenar);
+  border-bottom: 1px solid var(--zemin);
+  color: var(--yazi);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------- 2B tuvaller */
+
+.tuval-sarmal {
+  background: var(--zemin);
+  border: 1px solid var(--kenar);
+  border-radius: 10px;
+  padding: 8px;
+  /* Tuvalin genisligi bu kutunun clientWidth'inden okunuyor - dolayisiyla
+     buranin genisligi cizimin olcegini belirliyor. */
+  min-width: 0;
+}
+
+.tuval-sarmal canvas { display: block; }
+
+.tuval-ust {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.katman-sat {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--soluk);
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+}
+
+.katman-sat > span { flex: none; }
+
+.katman-sat input[type="range"] {
+  flex: 1;
+  min-width: 120px;
+  accent-color: var(--vurgu);
+  padding: 0;
+  background: none;
+  border: none;
+  width: auto;
+}
+
+.katman-etiket {
+  font-size: 12px;
+  color: var(--yazi);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tuval-not {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--soluk);
+}
+
 /* --------------------------------------------------------------- blok tablo */
 
 .tablo-sarmal { overflow-x: auto; }
@@ -426,8 +526,6 @@ table.bloklar .kutu-ad { display: flex; align-items: center; gap: 7px; }
   padding: 20px;
   z-index: 40;
 }
-
-.perde[hidden] { display: none; }
 
 .pencere {
   background: var(--yuzey);

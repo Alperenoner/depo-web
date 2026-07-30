@@ -156,25 +156,68 @@
 
     <!-- Hesap sonucu -->
     <div id="sonuc" hidden>
-      <h2>Yerleşim Blokları</h2>
-      <div class="tablo-sarmal">
-        <table class="bloklar">
-          <thead>
-            <tr>
-              <th>Kutu</th>
-              <th>Diziliş (nx×ny×nz)</th>
-              <th>Adet</th>
-              <th>Duruş (U×G×Y, cm)</th>
-              <th>Konum X</th>
-            </tr>
-          </thead>
-          <tbody id="blokGovde"></tbody>
-        </table>
-      </div>
+
+      <!-- Sekme cubugu. FAZ 3c (katalog/plan) ve 3d (karsilastirma, yukleme
+           listesi) buraya yeni dugme + yeni panel ekleyecek. -->
+      <nav class="sekmeler" id="sekmeler" role="tablist">
+        <button class="sekme etkin" data-sekme="kusbakisi" role="tab"
+                aria-selected="true">🗺 Kuşbakışı</button>
+        <button class="sekme" data-sekme="yandan" role="tab"
+                aria-selected="false">📐 Yandan Görünüm</button>
+        <button class="sekme" data-sekme="bloklar" role="tab"
+                aria-selected="false">📋 Bloklar</button>
+      </nav>
+
+      <!-- ---- kusbakisi ---- -->
+      <section class="sekme-icerik" id="panelKusbakisi" role="tabpanel">
+        <div class="tuval-ust">
+          <label class="katman-sat">
+            <span>Katman</span>
+            <input type="range" id="katmanKaydirici" min="0" max="0" value="0" step="1">
+          </label>
+          <span class="katman-etiket" id="katmanEtiket">—</span>
+          <button class="ikincil ufak" id="katmanSifirla">Tümü</button>
+        </div>
+        <div class="tuval-sarmal"><canvas id="tuvalKus"></canvas></div>
+        <p class="tuval-not">
+          Yukarıdan bakış. Sol kenar aracın <strong>önü</strong>. Kaydırıcıyı
+          oynatınca yalnızca o kattaki kutular görünür — üst katlar alttakini
+          kapatmaz.
+        </p>
+      </section>
+
+      <!-- ---- yandan kesit ---- -->
+      <section class="sekme-icerik" id="panelYandan" role="tabpanel" hidden>
+        <div class="tuval-sarmal"><canvas id="tuvalYan"></canvas></div>
+        <p class="tuval-not" id="yanNot">
+          Yandan kesit. Mavi kesikli çizgi <strong>yük yüksekliği</strong>,
+          üstündeki taralı alan <strong>tavan boşluğu</strong>.
+        </p>
+      </section>
+
+      <!-- ---- blok listesi ---- -->
+      <section class="sekme-icerik" id="panelBloklar" role="tabpanel" hidden>
+        <div class="tablo-sarmal">
+          <table class="bloklar">
+            <thead>
+              <tr>
+                <th>Kutu</th>
+                <th>Diziliş (nx×ny×nz)</th>
+                <th>Adet</th>
+                <th>Duruş (U×G×Y, cm)</th>
+                <th>Konum X</th>
+              </tr>
+            </thead>
+            <tbody id="blokGovde"></tbody>
+          </table>
+        </div>
+      </section>
+
       <p class="faz-not">
-        <strong>FAZ 3a</strong> — sayılar ve blok listesi çalışıyor. Görsel
-        sekmeler (kuşbakışı, yandan görünüm, karşılaştırma, yazdırılabilir
-        yükleme listesi) <strong>FAZ 3b–3d</strong>'de gelecek.
+        <strong>FAZ 3b</strong> — kuşbakışı ve yandan kesit çalışıyor.
+        Katalog penceresi, plan kaydet/yükle, karşılaştırma ve yazdırılabilir
+        yükleme listesi <strong>FAZ 3c–3d</strong>'de gelecek. 3B görünüm
+        <strong>FAZ 4</strong>.
       </p>
     </div>
   </main>
@@ -292,6 +335,7 @@
 </div>
 
 <script src="/yerlesim.js"></script>
+<script src="/cizim.js"></script>
 <script src="/uygulama.js"></script>
 </body>
 </html>
