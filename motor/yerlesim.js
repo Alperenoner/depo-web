@@ -752,6 +752,27 @@
   }
 
   // --------------------------------------------------------------------------
+  //  YUKLEME SIRASI
+  //
+  //  Motorun kendi blok sirasi YERLESTIRME sirasidir - hangi bosluk once
+  //  doldu. Yukleyen kisi icin anlamli olan KONUM sirasi: aracin onunden
+  //  arkaya (x), esitse genislik boyunca (y), sonra alttan uste (z).
+  //
+  //  Burada durmasinin sebebi TEK KAYNAK: bu sirayi iki yer birden gosteriyor -
+  //  📋 Yukleme Listesi'nin "Sira" sutunu ve 3B'deki numara etiketleri. Ikisi
+  //  ayni sayiyi yazmak ZORUNDA; her biri kendi sort'unu yazsaydi biri
+  //  degistiginde digeri sessizce ayrisirdi (FAZ 3c'de strateji listesi tam
+  //  boyle ayrisip veri kaybettirmisti).
+  //
+  //  Girdiyi degistirmez, yeni dizi dondurur.
+  // --------------------------------------------------------------------------
+
+  function yuklemeSirasi(bloklar) {
+    return (bloklar || []).slice()
+      .sort((p, q) => p.x - q.x || p.y - q.y || p.z - q.z);
+  }
+
+  // --------------------------------------------------------------------------
   //  Bloklari tek tek kutuya ac (cizim ve dogrulama testleri icin)
   // --------------------------------------------------------------------------
 
@@ -810,6 +831,7 @@
     planla,
     hepsiniHesapla,
     kutulariAc,
+    yuklemeSirasi,
     tekKutuKapasitesi,
     duruslariUret,
     ozetHesapla,

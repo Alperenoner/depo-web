@@ -60,6 +60,7 @@
     kur: () => false,
     ciz: () => false,
     aci() {}, kesit() {}, animasyonBaslat() {}, duvarlariGoster() {},
+    numaralariGoster() {},
     basla() {}, durdur() {}, olcuDegisti() {},
     durum: () => ({ kuruldu: false, kip: 'tek', ornekSayisi: 0 }),
   };
@@ -993,7 +994,10 @@
     if (!D.ucKuruldu || D.sekme !== 'ucboyut') return;
     if (!D.plan || !D.aracAktif) return;
 
-    Uc.ciz(D.plan, D.aracAktif, { duvarlar: $('ucDuvarlar').checked });
+    Uc.ciz(D.plan, D.aracAktif, {
+      duvarlar: $('ucDuvarlar').checked,
+      numaralar: $('ucNumara').checked,
+    });
     // Kesit kaydiricisi kullanicinin biraktigi yerde kalsin
     Uc.kesit(Number($('ucKesit').value) / 100);
 
@@ -1001,6 +1005,23 @@
     $('ucKip').textContent = d.kip === 'blok'
       ? 'Blok kipi — ' + sayiYaz(D.plan.ozet.toplamAdet) + ' kutu, ızgara dokusu'
       : 'Tek tek kip — ' + sayiYaz(d.ornekSayisi) + ' kutu ayrı çizildi';
+
+    ucNumaraNotYaz();
+  }
+
+  /**
+   * Blok sayisi etiket sinirini asarsa yalnizca ilk N blok numaralanir.
+   * Kullanici eksik numarayi hata sanmasin diye sebebi yaziliyor.
+   */
+  function ucNumaraNotYaz() {
+    const not = $('ucNumaraNot');
+    const d = Uc.durum();
+    const kirpildi = $('ucNumara').checked && d.numaraKirpildi;
+    gorunur(not, kirpildi);
+    if (kirpildi) {
+      not.textContent = 'ilk ' + sayiYaz(d.numaraSayisi) + ' blok numaralandı (' +
+                        sayiYaz(D.plan.ozet.blokSayisi) + ' blok var)';
+    }
   }
 
   // ===========================================================================
@@ -1148,8 +1169,9 @@
     }
 
     // ---- satirlar ----
-    const sirali = (D.plan.bloklar || []).slice().sort((p, q) =>
-      p.x - q.x || p.y - q.y || p.z - q.z);
+    // Sira motordan geliyor, burada hesaplanmiyor: 3B'deki numara etiketleri
+    // (FAZ 9) ayni fonksiyonu cagiriyor, iki numara ayrisamaz.
+    const sirali = Yerlesim.yuklemeSirasi(D.plan.bloklar);
 
     sirali.forEach((b, i) => {
       const tr = document.createElement('tr');
@@ -1679,6 +1701,12 @@
       () => Uc.kesit(Number($('ucKesit').value) / 100));
     $('ucDuvarlar').addEventListener('change',
       () => Uc.duvarlariGoster($('ucDuvarlar').checked));
+    $('ucNumara').addEventListener('change', () => {
+      // Yeniden cizim YOK: etiketler ilk acilista uretilip sonra
+      // gorunurluk degistiriliyor - kameranin acisi bozulmasin.
+      Uc.numaralariGoster($('ucNumara').checked);
+      ucNumaraNotYaz();
+    });
 
     // -- yazdirma --
     // Ekrandaki her seyi degil ACIK SEKMEYI basar (bkz. stil.css @media print)

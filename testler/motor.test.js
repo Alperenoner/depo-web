@@ -585,3 +585,57 @@ test('Agirligi 0 olan kutu kapasite hesabini bozmaz', () => {
   assert.equal(p.ozet.toplamAgirlik, 0);
   assert.equal(p.ozet.agirlikMerkezi, 0); // agirlik yoksa merkez tanimsiz -> 0
 });
+
+// ============================================================================
+//  11. YUKLEME SIRASI  (FAZ 9)
+//
+//  Motorun kendi blok sirasi YERLESTIRME sirasidir (hangi bosluk once doldu).
+//  Yukleyen kisi icin anlamli olan KONUM sirasi. Bu fonksiyon motorda duruyor
+//  cunku ayni sirayi IKI yer gosteriyor: 📋 Yukleme Listesi'nin "Sira" sutunu
+//  ve 3B'deki numara etiketleri. Ayrisirlarsa ayni bloga iki farkli numara
+//  verilir - kagittaki 7 ile ekrandaki 7 ayni blok olmaz.
+// ============================================================================
+
+test('Yukleme sirasi onden arkaya: once x, sonra y, sonra z', () => {
+  const bloklar = [
+    { ad: 'd', x: 100, y: 500, z: 0 },
+    { ad: 'c', x: 100, y: 0, z: 300 },
+    { ad: 'b', x: 100, y: 0, z: 0 },
+    { ad: 'a', x: 0, y: 900, z: 900 },
+  ];
+  assert.deepEqual(
+    Yerlesim.yuklemeSirasi(bloklar).map((b) => b.ad),
+    ['a', 'b', 'c', 'd'],
+    'x once gelir; x esitse y, y de esitse z'
+  );
+});
+
+test('Yukleme sirasi girdiyi DEGISTIRMEZ, yeni dizi doner', () => {
+  // Cagiran taraf plani ekrana cizerken motorun blok sirasina guveniyor;
+  // yerinde siralamak o sirayi sessizce bozardi.
+  const bloklar = [{ x: 5, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }];
+  const sirali = Yerlesim.yuklemeSirasi(bloklar);
+  assert.notEqual(sirali, bloklar, 'yeni dizi olmali');
+  assert.equal(bloklar[0].x, 5, 'girdi oldugu gibi kalmali');
+  assert.equal(sirali[0].x, 1);
+});
+
+test('Bos/eksik girdide cokmez', () => {
+  assert.deepEqual(Yerlesim.yuklemeSirasi([]), []);
+  assert.deepEqual(Yerlesim.yuklemeSirasi(null), []);
+  assert.deepEqual(Yerlesim.yuklemeSirasi(undefined), []);
+});
+
+test('Gercek planda her blok tam bir kez, sira artan x ile ilerler', () => {
+  const p = Yerlesim.planla(ARAC_14M, [
+    { kutu: KUTULAR.koliOrta, adet: 137 },
+    { kutu: KUTULAR.koliKucuk, maks: true },
+  ]);
+  const sirali = Yerlesim.yuklemeSirasi(p.bloklar);
+
+  assert.equal(sirali.length, p.bloklar.length, 'blok kaybolmaz/cogalmaz');
+  assert.equal(new Set(sirali).size, p.bloklar.length, 'ayni blok iki kez olmaz');
+  for (let i = 1; i < sirali.length; i++) {
+    assert.ok(sirali[i - 1].x <= sirali[i].x, 'x geriye gitmemeli');
+  }
+});

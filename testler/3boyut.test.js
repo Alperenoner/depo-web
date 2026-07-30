@@ -152,3 +152,53 @@ test('Modul three.js olmadan yuklenir ve saf yardimcilar calisir', () => {
   assert.equal(typeof Uc.yuzTekrarlari, 'function');
   assert.equal(Uc.destekliyorMu(), false, 'three yokken destek yok demeli');
 });
+
+// ============================================================================
+//  5. SIRA NUMARALARI  (FAZ 9)
+//
+//  Numaralar 3boyut.js'te URETILMEZ, motordan (Yerlesim.yuklemeSirasi)
+//  gelir - 📋 Yukleme Listesi'ndeki "Sira" ile ayni sayi olmak zorunda.
+//  Buradaki testler tam da o esitligi ve sinirin (NUMARA_SINIR) kirpma
+//  davranisini kilitliyor.
+//
+//  Bu fonksiyon three.js istemiyor: sprite kurmuyor, sadece hangi bloga
+//  hangi sayinin dustugunu soyluyor. O yuzden Node'da calisabiliyor.
+// ============================================================================
+
+test('Numara sirasi Yukleme Listesi ile BIREBIR ayni', () => {
+  const p = Yerlesim.planla(ARAC_14M, [
+    { kutu: KUTULAR.koliOrta, adet: 137 },
+    { kutu: KUTULAR.koliKucuk, maks: true },
+  ]);
+  assert.ok(p.bloklar.length > 1, 'birden fazla blok bekleniyor');
+
+  // Yukleme Listesi'nin yaptigi is: motordan sirayi al, 1'den numaralandir
+  const liste = Yerlesim.yuklemeSirasi(p.bloklar);
+  const etiketler = Uc.numaraListesi(p.bloklar);
+
+  assert.equal(etiketler.length, liste.length);
+  etiketler.forEach((e, i) => {
+    assert.equal(e.numara, i + 1, 'numaralar 1"den baslayip artmali');
+    assert.equal(e.blok, liste[i], 'listedeki ' + (i + 1) + '. blok ile ayni olmali');
+  });
+});
+
+test('Numara sinirini asan planda ilk NUMARA_SINIR blok numaralanir', () => {
+  assert.equal(Uc.NUMARA_SINIR, 400);
+
+  const cok = [];
+  for (let i = 0; i < Uc.NUMARA_SINIR + 25; i++) cok.push({ x: i, y: 0, z: 0 });
+
+  const etiketler = Uc.numaraListesi(cok);
+  assert.equal(etiketler.length, Uc.NUMARA_SINIR, 'sinirda kesilmeli');
+  assert.equal(etiketler[0].numara, 1);
+  assert.equal(etiketler[Uc.NUMARA_SINIR - 1].numara, Uc.NUMARA_SINIR);
+  // Kesilenler SONDAKILER olmali - arac onundeki bloklar numarasiz kalmasin
+  assert.equal(etiketler[0].blok.x, 0);
+  assert.equal(etiketler[Uc.NUMARA_SINIR - 1].blok.x, Uc.NUMARA_SINIR - 1);
+});
+
+test('Numara listesi bos/eksik girdide cokmez', () => {
+  assert.deepEqual(Uc.numaraListesi([]), []);
+  assert.deepEqual(Uc.numaraListesi(null), []);
+});

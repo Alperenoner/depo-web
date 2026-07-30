@@ -37,6 +37,18 @@
   // bellek artar; 64 gozle bakildiginda yeterli.
   const DOKU_HUCRE = 64;
 
+  // En fazla kac bloga sira numarasi yazilir (FAZ 9).
+  // Iki sebep: (1) her etiket AYRI bir doku demek - sayi buyudukce GPU
+  // bellegi siser; (2) 400 etiketten sonra zaten ust uste binip okunmaz
+  // hale geliyor. Asilirsa ilk 400 blok numaralanir, arayuz de bunu yazar.
+  const NUMARA_SINIR = 400;
+
+  // Numara etiketinin EKRANDAKI boyu (CSS pikseli). Sahnede sabit olcu
+  // vermek ise yaramiyor: 14 m'lik bir kasaya butun halinde bakinca rakam
+  // birkac piksele dusup okunmaz oluyordu. Kameraya olan uzakliga gore her
+  // karede olceklendiginde numara hangi zoom'da olursa olsun ayni boyda.
+  const NUMARA_PIKSEL = 26;
+
   // ===========================================================================
   //  SAF YARDIMCILAR  (three.js gerekmez - Node testleri bunlari cagiriyor)
   // ===========================================================================
@@ -83,6 +95,24 @@
   function renkOynamasi(i, j, k) {
     const h = (i * 7 + j * 13 + k * 29) % 9; // 0..8
     return 0.92 + h * 0.02; // 0.92 .. 1.08
+  }
+
+  /**
+   * Bloklarin YUKLEME SIRASI numaralari  (FAZ 9).
+   *
+   * Sira burada HESAPLANMAZ, motordan alinir: 3B'deki numara ile 📋 Yukleme
+   * Listesi'ndeki "Sira" sutunu ayni sayiyi gostermek zorunda. Kendi
+   * siralamamizi yazsaydik biri degistiginde digeri sessizce ayrisirdi.
+   *
+   * Motor (yerlesim.js) bu dosyadan ONCE yukleniyor ve zaten uygulamanin
+   * onsarti - three.js gibi opsiyonel degil.
+   *
+   * @returns {Array<{blok: Object, numara: number}>}  en fazla NUMARA_SINIR kayit
+   */
+  function numaraListesi(bloklar) {
+    return kok.Yerlesim.yuklemeSirasi(bloklar)
+      .slice(0, NUMARA_SINIR)
+      .map((blok, i) => ({ blok, numara: i + 1 }));
   }
 
   // ===========================================================================
@@ -173,6 +203,16 @@
       duvarlar: null,
       animasyon: null,   // {baslangic, sure}
       calisiyor: false,
+      // ---- FAZ 9: sira numaralari ----
+      numaralar: [],     // Sprite listesi
+      numaraAcik: true,
+      numaraKirpildi: false,
+      sonBloklar: [],    // etiketler sonradan acilirsa yeniden gerekiyor
+      kaydirX: 0,
+      kaydirZ: 0,
+      // blok -> animasyonun hangi oraninda tamamlandigi (0..1)
+      blokEsik: new Map(),
+      animOran: 1,
       // Cizim ancak gerektiginde yapilir; damping ve animasyon surerken devam
       kareIstegi: 0,
     };
@@ -197,7 +237,11 @@
     while (g.children.length) {
       const c = g.children.pop();
       g.remove(c);
-      if (c.geometry) c.geometry.dispose();
+      // Sprite'in geometrisi three.js'te PAYLASILAN tek bir nesne (modul
+      // seviyesinde bir kez uretiliyor). Onu dispose etmek sonraki butun
+      // sprite'lari etkiler - numara etiketleri bu yuzden disarida birakiliyor.
+      // Malzeme ve doku ise her etikete OZEL, onlar mutlaka birakilmali.
+      if (c.geometry && !c.isSprite) c.geometry.dispose();
       const m = c.material;
       if (Array.isArray(m)) {
         for (const x of m) { if (x.map) x.map.dispose(); x.dispose(); }
@@ -209,12 +253,15 @@
     S.kutuBilgisi = [];
     S.toplamOrnek = 0;
     S.duvarlar = null;
+    S.numaralar = [];
+    S.numaraKirpildi = false;
+    S.blokEsik = new Map();
   }
 
   /**
    * @param {Object} plan  Yerlesim.planla() sonucu
    * @param {Object} arac  {uzunluk, genislik, yukseklik} (mm)
-   * @param {Object} [ayar] {duvarlar: boolean}
+   * @param {Object} [ayar] {duvarlar: boolean, numaralar: boolean}
    */
   function ciz(plan, arac, ayar) {
     if (!S) return false;
@@ -248,6 +295,15 @@
 
     if (S.kip === 'tek') tekTekCiz(bloklar, kaydirX, kaydirZ);
     else blokCiz(bloklar, kaydirX, kaydirZ);
+
+    // Numara etiketleri bloklardan SONRA: esikleri tekTekCiz/blokCiz doldurdu.
+    // Kapaliysa hic uretilmiyor (her etiket ayri doku) - kullanici acinca
+    // numaralariGoster() o anda kuruyor.
+    S.sonBloklar = bloklar;
+    S.kaydirX = kaydirX;
+    S.kaydirZ = kaydirZ;
+    S.numaraAcik = !ayar || ayar.numaralar !== false;
+    if (S.numaraAcik) numaralariKur();
 
     // Kamera ilk cizimde yerlesir; sonraki cizimlerde kullanicinin acisi korunur
     if (!S.kameraYerlesti) {
@@ -325,7 +381,12 @@
 
     // Yukleme animasyonu ONDEN arkaya oynuyor: ornekler x sirasinda dizilmeli,
     // cunku animasyon InstancedMesh.count'u artirarak calisiyor.
-    const sirali = bloklar.slice().sort((p, q) => p.x - q.x || p.z - q.z || p.y - q.y);
+    //
+    // Sira motorun yuklemeSirasi'ndan geliyor - yani 📋 Yukleme Listesi'nin
+    // ve numara etiketlerinin sirasiyla AYNI. Boyle olmasi sart: animasyon
+    // baska bir sirada oynasaydi etiketler "2, 1, 3" gibi karisik belirirdi.
+    const sirali = kok.Yerlesim.yuklemeSirasi(bloklar);
+    const esikler = new Map();
 
     let n = 0;
     for (const b of sirali) {
@@ -365,7 +426,13 @@
           }
         }
       }
+      // Bu blok bittiginde kacinci ornekteyiz - animasyon esigi bundan cikacak
+      esikler.set(b, n);
     }
+
+    // Ornek sayisindan orana (0..1) cevir: animasyon oranla ilerliyor
+    for (const [b, sayac] of esikler) esikler.set(b, n > 0 ? sayac / n : 1);
+    S.blokEsik = esikler;
 
     oberk.count = n;
     oberk.instanceMatrix.needsUpdate = true;
@@ -429,10 +496,14 @@
   }
 
   function blokCiz(bloklar, kaydirX, kaydirZ) {
-    // Onden arkaya: animasyon bloklari bu sirada gosteriyor
-    const sirali = bloklar.slice().sort((p, q) => p.x - q.x || p.z - q.z || p.y - q.y);
+    // Onden arkaya: animasyon bloklari bu sirada gosteriyor. Sira motordan -
+    // bkz. tekTekCiz'deki aciklama (etiket numaralariyla ayni olmali).
+    const sirali = kok.Yerlesim.yuklemeSirasi(bloklar);
+    const esikler = new Map();
+    let sayac = 0;
 
     for (const b of sirali) {
+      esikler.set(b, ++sayac / sirali.length);
       const uzun = b.nx * b.adimU;
       const genis = b.ny * b.adimG;
       const yuksek = b.nz * b.adimY;
@@ -461,6 +532,161 @@
       };
       S.icerik.add(kutu);
     }
+
+    S.blokEsik = esikler;
+  }
+
+  // ------------------------------------------------------- sira numaralari
+  //
+  //  Her blogun MERKEZINE, kameraya donuk bir etiket (Sprite). Numara
+  //  📋 Yukleme Listesi'ndeki "Sira" ile ayni - ikisi de motorun
+  //  yuklemeSirasi'ni kullaniyor.
+  //
+  //  depthTest KAPALI: etiket yukun icinde kalsa da okunur. Acik olsaydi
+  //  blogun kendi govdesi etiketi orterdi (etiket blogun MERKEZINDE duruyor)
+  //  ve ic bloklarin hicbir numarasi gorunmezdi - ozellik islevsiz kalirdi.
+  //  Bunun bedeli kalabalik: cok blokta numaralar ust uste biner, o yuzden
+  //  kapatilabiliyor ve Kesit kaydiricisi etiketleri de kirpiyor
+  //  (clippingPlanes) - kullanici yuku katman katman soyup okuyabilir.
+
+  /** Yuvarlak koseli dikdortgen yolu. ctx.roundRect eski Safari'de yok. */
+  function yuvarlakKutuYolu(c, x, y, en, boy, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + en, y, x + en, y + boy, r);
+    c.arcTo(x + en, y + boy, x, y + boy, r);
+    c.arcTo(x, y + boy, x, y, r);
+    c.arcTo(x, y, x + en, y, r);
+    c.closePath();
+  }
+
+  /** Tek bir numaranin dokusu. Her numara farkli, onbelleklenemez. */
+  function numaraDokusu(metin) {
+    const BOY = 64;
+    const EN = Math.max(BOY, 34 + 30 * metin.length); // basamak sayisina gore
+
+    const t = document.createElement('canvas');
+    t.width = EN;
+    t.height = BOY;
+    const c = t.getContext('2d');
+
+    yuvarlakKutuYolu(c, 2, 2, EN - 4, BOY - 4, 14);
+    c.fillStyle = 'rgb(15 17 21 / 0.86)'; // stil.css --zemin, yariseffaf
+    c.fill();
+    c.strokeStyle = '#4a9eff';            // stil.css --vurgu
+    c.lineWidth = 3;
+    c.stroke();
+
+    c.fillStyle = '#ffffff';
+    c.font = 'bold 38px system-ui, -apple-system, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(metin, EN / 2, BOY / 2 + 1);
+
+    const d = new THREE.CanvasTexture(t);
+    // Mipmap yok: etiket kucucuk kaliyor ve en kucuk mipmap seviyesi rakami
+    // bulanik bir lekeye ceviriyor. Izgara dokusundaki tuzagin aynisi.
+    d.generateMipmaps = false;
+    d.minFilter = THREE.LinearFilter;
+    d.magFilter = THREE.LinearFilter;
+    d.anisotropy = S.enFazlaAniz;
+    return d;
+  }
+
+  function numaralariKur() {
+    if (S.numaralar.length) return;           // zaten kurulu
+    const bloklar = S.sonBloklar || [];
+    if (!bloklar.length) return;
+
+    S.numaraKirpildi = bloklar.length > NUMARA_SINIR;
+
+    for (const { blok, numara } of numaraListesi(bloklar)) {
+      const uzun = blok.nx * blok.adimU;
+      const genis = blok.ny * blok.adimG;
+      const yuksek = blok.nz * blok.adimY;
+
+      const doku = numaraDokusu(String(numara));
+      // Kesit duzlemi burada KULLANILMIYOR (bloklarin aksine). Etiket
+      // kameraya donuk dikey bir yuzey: yatay kirpma duzlemi onu ortadan
+      // kesip yarim rozet birakiyordu - ekranda bozuk goruntu. Etiket bir
+      // yuzey degil isaret; ya tamamen gorunmeli ya hic. Kesitin altinda
+      // kalip kalmadigina numaraGorunurlukUygula karar veriyor.
+      const etiket = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: doku,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }));
+
+      etiket.position.set(
+        S.kaydirX + (blok.x + uzun / 2) * OLCEK,
+        (blok.z + yuksek / 2) * OLCEK,
+        S.kaydirZ + (blok.y + genis / 2) * OLCEK
+      );
+
+      // depthTest kapali oldugu icin cizim sirasi onemli: etiketler en sonda
+      etiket.renderOrder = 10;
+      // userData.ad YOK - hover baloncugu ve animasyon blok meshlerini
+      // `userData.ad` ile suzuyor, etiketler o suzgece takilmamali.
+      etiket.userData = {
+        numara,
+        esik: S.blokEsik.get(blok) || 0,
+        // dokunun en/boy orani - olcek her karede bundan kuruluyor
+        oran: doku.image.width / doku.image.height,
+      };
+
+      S.icerik.add(etiket);
+      S.numaralar.push(etiket);
+    }
+
+    numaraGorunurlukUygula();
+    numaraOlcegiUygula();
+  }
+
+  /**
+   * Etiketleri ekranda sabit piksel boyunda tutar.
+   *
+   * Perspektif kamerada d uzakligindaki h boyundaki bir nesne ekranin
+   * h / (2 · d · tan(fov/2)) kadarini kaplar. Tersini alip istedigimiz
+   * piksel boyunu veren dunya boyunu buluyoruz. Her karede cagriliyor -
+   * kamera her hareket ettiginde uzaklik degisiyor.
+   */
+  function numaraOlcegiUygula() {
+    if (!S.numaralar.length) return;
+    const ekranYuk = S.cizer.domElement.clientHeight || 1;
+    const tanYari = Math.tan(((S.kamera.fov * Math.PI) / 180) / 2);
+
+    for (const e of S.numaralar) {
+      if (!e.visible) continue;
+      const uzaklik = S.kamera.position.distanceTo(e.position);
+      const boy = (2 * uzaklik * tanYari * NUMARA_PIKSEL) / ekranYuk;
+      e.scale.set(boy * e.userData.oran, boy, 1);
+    }
+  }
+
+  /**
+   * Bir etiket ucu sartin UCUNE birden uymalidir:
+   *   1) kullanici numaralari acik birakmis,
+   *   2) animasyon o bloga gelmis (yuk gelmeden numara belirmesin),
+   *   3) blogun merkezi kesit duzleminin ALTINDA (kirpilan yukun numarasi
+   *      da kalkmali, yoksa havada asili numara kaliyor).
+   */
+  function numaraGorunurlukUygula() {
+    const oran = S.animasyon ? S.animOran : 1;
+    for (const e of S.numaralar) {
+      e.visible = S.numaraAcik &&
+                  e.userData.esik <= oran &&
+                  e.position.y <= S.kesitDuzlemi.constant;
+    }
+  }
+
+  function numaralariGoster(evet) {
+    if (!S) return;
+    S.numaraAcik = !!evet;
+    if (S.numaraAcik) numaralariKur(); // ilk acilista o an uretiliyor
+    numaraGorunurlukUygula();
+    numaraOlcegiUygula();
+    kareIstek();
   }
 
   // ===========================================================================
@@ -552,6 +778,9 @@
     const y = S.arac.Y * OLCEK;
     // 1 (tam) durumunda duzlemi tavanin uzerine cikar: kirpma tamamen kalksin
     S.kesitDuzlemi.constant = oran >= 1 ? 1e6 : y * oran;
+    // Kesilen yukun numarasi da kalksin - bkz. numaraGorunurlukUygula
+    numaraGorunurlukUygula();
+    numaraOlcegiUygula();
     kareIstek();
   }
 
@@ -572,6 +801,9 @@
 
     const gecen = performance.now() - a.baslangic;
     const oran = Math.min(1, gecen / a.sure);
+    S.animOran = oran;
+    // Etiketler blogu ile birlikte belirsin - yuk gelmeden numara gorunmesin
+    numaraGorunurlukUygula();
 
     if (S.kip === 'tek' && S.oberk) {
       S.oberk.count = Math.max(1, Math.round(S.toplamOrnek * oran));
@@ -584,6 +816,7 @@
 
     if (oran >= 1) {
       S.animasyon = null;
+      S.animOran = 1;
       // Animasyon bitince her sey gorunur kalsin
       if (S.kip === 'tek' && S.oberk) S.oberk.count = S.toplamOrnek;
       else {
@@ -591,6 +824,7 @@
           if (c.userData && c.userData.ad) c.visible = true;
         }
       }
+      numaraGorunurlukUygula();
       return false;
     }
     return true;
@@ -668,6 +902,7 @@
 
     const animSuruyor = animasyonuUygula();
     const dampingSuruyor = S.kontrol.update(); // degisiklik varsa true
+    numaraOlcegiUygula(); // kamera oynadiysa etiket boyu yeniden kurulmali
     balonuGuncelle();
     S.cizer.render(S.sahne, S.kamera);
 
@@ -715,6 +950,10 @@
       nesneSayisi: S.icerik.children.length,
       calisiyor: S.calisiyor,
       enFazlaAniz: S.enFazlaAniz,
+      numaraSayisi: S.numaralar.length,
+      // Blok sayisi NUMARA_SINIR'i astiysa yalnizca ilki numaralandi -
+      // arayuz bunu yazsin, kullanici eksik numarayi hata sanmasin.
+      numaraKirpildi: S.numaraKirpildi,
     };
   }
 
@@ -724,9 +963,11 @@
 
   kok.Uc = {
     TEK_TEK_SINIR,
+    NUMARA_SINIR,
     kipSec,
     yuzTekrarlari,
     renkOynamasi,
+    numaraListesi,
     destekliyorMu,
     webglVarMi,
     kur,
@@ -735,14 +976,16 @@
     kesit,
     animasyonBaslat,
     duvarlariGoster,
+    numaralariGoster,
     basla,
     durdur,
     olcuDegisti,
     durum,
   };
 
-  // Saf yardimcilar (kipSec, yuzTekrarlari, renkOynamasi) three.js istemiyor;
-  // Node testleri bunlari dogrudan cagiriyor.
+  // Saf yardimcilar (kipSec, yuzTekrarlari, renkOynamasi, numaraListesi)
+  // three.js istemiyor; Node testleri bunlari dogrudan cagiriyor.
+  // numaraListesi motoru (Yerlesim) istiyor - o zaten onsart.
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = kok.Uc;
   }
