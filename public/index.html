@@ -17,6 +17,8 @@
     <span class="alt" id="altBaslik">Tır Yükleme Planlayıcı</span>
   </div>
   <div class="bosluk"></div>
+  <button class="ikincil ufak" id="katalogAc">📦 Katalog</button>
+  <button class="ikincil ufak" id="planlarAc">💾 Planlar</button>
   <button class="ikincil ufak" id="cikis">Çıkış</button>
 </header>
 
@@ -214,9 +216,9 @@
       </section>
 
       <p class="faz-not">
-        <strong>FAZ 3b</strong> — kuşbakışı ve yandan kesit çalışıyor.
-        Katalog penceresi, plan kaydet/yükle, karşılaştırma ve yazdırılabilir
-        yükleme listesi <strong>FAZ 3c–3d</strong>'de gelecek. 3B görünüm
+        <strong>FAZ 3c</strong> — kuşbakışı, yandan kesit, katalog penceresi ve
+        plan kaydet/yükle çalışıyor. Karşılaştırma ve yazdırılabilir yükleme
+        listesi <strong>FAZ 3d</strong>'de gelecek. 3B görünüm
         <strong>FAZ 4</strong>.
       </p>
     </div>
@@ -225,7 +227,7 @@
 </div>
 
 <!-- =================================================== arac penceresi ==== -->
-<div class="perde" id="aracPerde" hidden>
+<div class="perde ust" id="aracPerde" hidden>
   <form class="pencere" id="aracForm">
     <h3 id="aracFormBaslik">Yeni Araç</h3>
     <p class="ipucu">Ölçüler <strong>santimetre</strong> ve <strong>iç ölçüdür</strong> —
@@ -269,8 +271,101 @@
   </form>
 </div>
 
+<!-- ================================================ katalog penceresi ==== -->
+<!-- Liste pencereleri form pencerelerinin ALTINDA durur (bkz. .perde.ust):
+     katalogdan "Duzenle"ye basinca kutu formu bunun ustune aciliyor. -->
+<div class="perde" id="katalogPerde" hidden>
+  <div class="pencere genis">
+    <h3>📦 Kutu Kataloğu <span class="sayi" id="katalogSayi">0</span></h3>
+    <p class="ipucu">
+      <strong>Sığar</strong> sütunu aktif araca göre anında hesaplanır —
+      seçili diziliş ve kutular arası pay uygulanır.
+      <span id="katalogAracNot"></span>
+    </p>
+
+    <p class="bos-not" id="katalogBosNot" hidden>
+      Katalog boş. Kutu ölçüleri hazır gelmez — ilkini sen tanımlayacaksın.
+    </p>
+
+    <div class="tablo-sarmal" id="katalogTabloYer">
+      <table class="bloklar katalog">
+        <thead>
+          <tr>
+            <th>Kutu</th>
+            <th>Grup</th>
+            <th>Ölçü (cm)</th>
+            <th>Kat</th>
+            <th>Yatık</th>
+            <th>Sığar</th>
+            <th>Doluluk</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="katalogGovde"></tbody>
+      </table>
+    </div>
+
+    <div class="dugmeler">
+      <button class="ikincil" id="katalogKapat">Kapat</button>
+      <button id="katalogYeniKutu">+ Yeni Kutu Tanımla</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================ planlar penceresi ==== -->
+<div class="perde" id="planPerde" hidden>
+  <div class="pencere genis">
+    <h3>💾 Planlar <span class="sayi" id="planSayi">0</span></h3>
+    <p class="ipucu">
+      Planın <strong>tarifi</strong> saklanır — araç ölçüleri, yük listesi,
+      diziliş ve pay. Yerleşim sonucu saklanmaz, yüklerken yeniden hesaplanır.
+    </p>
+
+    <div class="plan-kaydet">
+      <div class="ikili">
+        <label class="sat">
+          <span>Plan adı</span>
+          <input type="text" id="planAd" maxlength="80" autocomplete="off"
+                 placeholder="örn. Cuma sevkiyatı">
+        </label>
+        <label class="sat">
+          <span>Not <em style="font-style:normal;opacity:0.65">(isteğe bağlı)</em></span>
+          <input type="text" id="planNot" maxlength="500" autocomplete="off">
+        </label>
+      </div>
+      <button class="tam" id="planKaydet" disabled>Şu anki planı kaydet</button>
+      <p class="hata-not" id="planHata"></p>
+    </div>
+
+    <p class="bos-not" id="planBosNot" hidden>
+      Kayıtlı plan yok. Yukarıya bir ad yazıp şu anki planı kaydedebilirsin.
+    </p>
+
+    <div class="tablo-sarmal" id="planTabloYer">
+      <table class="bloklar">
+        <thead>
+          <tr>
+            <th>Ad</th>
+            <th>Araç (cm)</th>
+            <th>Kalem</th>
+            <th>Diziliş</th>
+            <th>Kayıtlı adet</th>
+            <th>Tarih</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="planGovde"></tbody>
+      </table>
+    </div>
+
+    <div class="dugmeler">
+      <button class="ikincil" id="planKapat">Kapat</button>
+    </div>
+  </div>
+</div>
+
 <!-- =================================================== kutu penceresi ==== -->
-<div class="perde" id="kutuPerde" hidden>
+<div class="perde ust" id="kutuPerde" hidden>
   <form class="pencere" id="kutuForm">
     <h3 id="kutuFormBaslik">Yeni Kutu</h3>
     <p class="ipucu">Ölçüler <strong>santimetre</strong>. Hangi kenarın uzunluk

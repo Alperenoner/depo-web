@@ -38,7 +38,21 @@ const SINIR = {
 const RENK_KALIBI = /^#[0-9a-fA-F]{6}$/;
 const VARSAYILAN_RENK = '#868e96';
 
-const STRATEJI_IDLERI = ['akilli', 'adet', 'boyuna', 'enine', 'dik'];
+// Gecerli strateji id'leri MOTORDAN turetilir, burada elle yazilmaz.
+//
+// Onceki hali elle yazilmis bir listeydi ('akilli','adet','boyuna','enine',
+// 'dik') ve FAZ 3a'da strateji sayisi 5'ten 3'e dusurulunce ayristi: kullanici
+// 'optimum' secip plan kaydetse sunucu bunu sessizce 'akilli'ye cevirip
+// kaydediyordu, plan geri yuklenince dizilis degisiyordu. Sessiz veri kaybi.
+//
+// Motoru buraya bagliyoruz cunku motor zaten tek kaynak: tarayici da ayni
+// dosyayi /yerlesim.js olarak aliyor (bkz. server.js MOTOR_DOSYALARI).
+const STRATEJI_IDLERI = require('../motor/yerlesim').STRATEJILER.map((s) => s.id);
+
+// Bilinmeyen strateji gelirse dusulecek deger - arayuzun varsayilaniyla ayni
+const VARSAYILAN_STRATEJI = STRATEJI_IDLERI.includes('optimum')
+  ? 'optimum'
+  : STRATEJI_IDLERI[0];
 
 // --- Temel cevirmenler -----------------------------------------------------
 
@@ -201,7 +215,9 @@ function plan(gelen) {
   }
   if (kalemler.length === 0) return { hata: 'Planda en az bir yük kalemi olmalı.' };
 
-  const strateji = STRATEJI_IDLERI.includes(g.strateji) ? g.strateji : 'akilli';
+  const strateji = STRATEJI_IDLERI.includes(g.strateji)
+    ? g.strateji
+    : VARSAYILAN_STRATEJI;
 
   const ayarlar = {
     pay: tamSayi((g.ayarlar || {}).pay, SINIR.pay) ?? 0,
@@ -263,6 +279,7 @@ module.exports = {
   SINIR,
   VARSAYILAN_RENK,
   STRATEJI_IDLERI,
+  VARSAYILAN_STRATEJI,
   tamSayi,
   ondalik,
   metin,

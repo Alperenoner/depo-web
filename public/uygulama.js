@@ -25,6 +25,7 @@
     araclar: [],
     aracSablonlari: [],
     kutular: [],
+    planlar: [],
     sinirlar: {},
     // Yuk listesi: [{kutuId, adet:number|null, maks:boolean}]
     kalemler: [],
@@ -61,6 +62,15 @@
   const metre = (mm) => (Number(mm || 0) / 1000).toLocaleString('tr-TR', {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
+
+  /** Veritabanindan gelen zaman damgasi -> "30.07.2026 13:45" */
+  const tarihYaz = (deger) => {
+    if (!deger) return '—';
+    const t = new Date(deger);
+    if (Number.isNaN(t.getTime())) return '—';
+    return t.toLocaleDateString('tr-TR') + ' ' +
+           t.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  };
 
   // ------------------------------------------------------------ birim cevrim
   //
@@ -110,6 +120,7 @@
     D.araclar = v.araclar || [];
     D.aracSablonlari = v.aracSablonlari || [];
     D.kutular = v.kutular || [];
+    D.planlar = v.planlar || [];
     D.sinirlar = v.sinirlar || {};
 
     $('baslik').textContent = D.ayarlar.baslik || 'DEPOLAMA';
@@ -124,6 +135,11 @@
     katalogCiz();
     kalemleriCiz();
     hesapla();
+
+    // Acik duran liste pencereleri de tazelenmeli - kutu silindikten sonra
+    // katalog eski satiri gostermeye devam etmesin.
+    if (!$('katalogPerde').hidden) katalogPenceresiCiz();
+    if (!$('planPerde').hidden) planlariCiz();
   }
 
   // ===========================================================================
@@ -324,10 +340,18 @@
     yukseklik: $('kutuYukseklik'),
   });
 
-  function kutuFormuAc(mevcut) {
+  /**
+   * @param {Object|null} mevcut  duzenlenecek/kopyalanacak kutu
+   * @param {string} [baslik]     pencere basligi; verilmezse kipe gore secilir
+   *
+   * Cogaltma da bu formu kullanir: `mevcut` kopyalanmis olculerle gelir ama
+   * `id` bos birakilir - sunucu bos id'yi yeni kayit sayar.
+   */
+  function kutuFormuAc(mevcut, baslik) {
     const f = kutuAlanlari();
-    $('kutuId').value = mevcut ? mevcut.id : '';
-    $('kutuFormBaslik').textContent = mevcut ? 'Kutuyu Düzenle' : 'Yeni Kutu';
+    $('kutuId').value = mevcut ? (mevcut.id || '') : '';
+    $('kutuFormBaslik').textContent =
+      baslik || (mevcut && mevcut.id ? 'Kutuyu Düzenle' : 'Yeni Kutu');
 
     f.ad.value = mevcut ? mevcut.ad : '';
     $('kutuGrup').value = mevcut ? (mevcut.grup || '') : '';
@@ -338,8 +362,8 @@
     $('kutuMaksIstif').value = mevcut ? mevcut.maksIstif : 0;
     $('kutuYatirilabilir').checked = mevcut ? !!mevcut.yatirilabilir : true;
     // Renk tek istisna: yeni kutuya sirayla bir renk atanir
-    $('kutuRenk').value = mevcut
-      ? (mevcut.renk || RENKLER[0])
+    $('kutuRenk').value = mevcut && mevcut.renk
+      ? mevcut.renk
       : RENKLER[D.kutular.length % RENKLER.length];
 
     $('kutuHata').textContent = '';
@@ -561,6 +585,7 @@
       $('baslangicMetin').textContent = !arac
         ? 'Sol panelden aracı oluştur, sonra kutu tanımlayıp yük listesine ekle. Hesap sen yazarken anında yapılır.'
         : 'Aracın hazır. Şimdi bir kutu seçip Ekle’ye bas — sayılar anında görünecek.';
+      planKaydetDenetle(); // plan yoksa "kaydet" kapali kalmali
       return;
     }
 
@@ -580,6 +605,7 @@
     bloklariYaz(D.plan.bloklar);
     katmanlariYenile();
     cizimYenile();
+    planKaydetDenetle();
     // Optimum hangi durusu sectigi plana bagli - her hesaptan sonra yenilenir
     stratejiAciklamaYaz();
   }
@@ -786,6 +812,386 @@
   }
 
   // ===========================================================================
+  //  KATALOG PENCERESI  (FAZ 3c)
+  //
+  //  Katalog BOS BASLAR ve boyle kalir - hazir kutu olcusu gelmez.
+  //  "Sigar" sutunu sunucuya gitmeden hesaplanir; motor tarayicida.
+  // ===========================================================================
+
+  function katalogAc() {
+    // Iki liste penceresi ayni z-katmaninda; ikisi birden acilirsa perdeler
+    // ust uste biniyor ve hangisinin ustte oldugu HTML sirasina kaliyor.
+    gorunur($('planPerde'), false);
+    gorunur($('katalogPerde'), true);
+    katalogPenceresiCiz();
+  }
+
+  function katalogPenceresiCiz() {
+    const govde = $('katalogGovde');
+    govde.innerHTML = '';
+
+    const varMi = D.kutular.length > 0;
+    $('katalogSayi').textContent = String(D.kutular.length);
+    gorunur($('katalogBosNot'), !varMi);
+    gorunur($('katalogTabloYer'), varMi);
+
+    const arac = D.aracAktif;
+    $('katalogAracNot').textContent = arac
+      ? 'Aktif araç: ' + arac.ad + ' (' +
+        olcuMetni(arac.uzunluk, arac.genislik, arac.yukseklik) + ').'
+      : 'Aktif araç yok — kaç sığdığı hesaplanamıyor.';
+
+    if (!varMi) return;
+
+    const s = Yerlesim.STRATEJILER.find((x) => x.id === D.ayar.strateji) ||
+              Yerlesim.STRATEJILER[0];
+
+    for (const k of D.kutular) {
+      const tr = document.createElement('tr');
+
+      // --- ad + renk benegi ---
+      const adHucre = document.createElement('td');
+      const sarmal = document.createElement('div');
+      sarmal.className = 'kutu-ad';
+      const benek = document.createElement('span');
+      benek.className = 'benek';
+      benek.style.background = k.renk || '#888';
+      sarmal.appendChild(benek);
+      sarmal.appendChild(document.createTextNode(k.ad));
+      adHucre.appendChild(sarmal);
+      tr.appendChild(adHucre);
+
+      const hucre = (metinDeger, sinifAd) => {
+        const td = document.createElement('td');
+        td.textContent = metinDeger;
+        if (sinifAd) td.className = sinifAd;
+        tr.appendChild(td);
+        return td;
+      };
+
+      hucre(k.grup || '—', k.grup ? '' : 'isaret');
+      hucre(cmYaz(k.uzunluk) + '×' + cmYaz(k.genislik) + '×' + cmYaz(k.yukseklik));
+      // maksIstif 0 = sinirsiz
+      hucre(k.maksIstif ? String(k.maksIstif) : '∞', k.maksIstif ? '' : 'isaret');
+      hucre(k.yatirilabilir ? 'evet' : 'hayır', k.yatirilabilir ? '' : 'isaret');
+
+      // --- kac sigar (canli hesap) ---
+      if (!arac) {
+        hucre('—', 'yok');
+        hucre('—', 'yok');
+      } else {
+        const kap = Yerlesim.tekKutuKapasitesi(arac, k, {
+          yonelim: s.yonelim,
+          puan: s.puan,
+          pay: D.ayar.pay,
+        });
+        hucre(sayiYaz(kap.adet), 'sigar' + (kap.adet === 0 ? ' sifir' : ''));
+        hucre('%' + sayiYaz(kap.doluluk, 1));
+      }
+
+      // --- eylemler ---
+      const eylem = document.createElement('td');
+      eylem.className = 'eylem';
+
+      const dugme = (metinDeger, baslikMetni, isle, ekSinif) => {
+        const b = document.createElement('button');
+        b.className = 'ikincil ufak' + (ekSinif ? ' ' + ekSinif : '');
+        b.textContent = metinDeger;
+        b.title = baslikMetni;
+        b.addEventListener('click', isle);
+        eylem.appendChild(b);
+      };
+
+      const listede = D.kalemler.some((x) => x.kutuId === k.id);
+      const ekleDugme = document.createElement('button');
+      ekleDugme.className = 'ufak' + (listede ? ' ikincil' : '');
+      ekleDugme.textContent = listede ? 'listede' : '+ yük';
+      ekleDugme.title = listede
+        ? 'Bu kutu zaten yük listesinde'
+        : 'Yük listesine ekle';
+      ekleDugme.disabled = listede;
+      ekleDugme.addEventListener('click', () => {
+        $('kutuSec').value = k.id;
+        kalemEkleDugmesi();
+        katalogPenceresiCiz(); // "listede" durumu guncellensin
+      });
+      eylem.appendChild(ekleDugme);
+
+      dugme('Düzenle', 'Ölçü ve rengi değiştir', () => kutuFormuAc(k));
+      dugme('⧉', 'Çoğalt — ölçüleri kopyalayıp yeni kutu tanımla', () => {
+        kutuFormuAc(
+          Object.assign({}, k, { id: '', ad: k.ad + ' (kopya)' }),
+          'Kutuyu Çoğalt'
+        );
+      });
+      dugme('Sil', 'Kutuyu katalogdan sil', () => kutuSilDugmesi(k), 'tehlike');
+
+      tr.appendChild(eylem);
+      govde.appendChild(tr);
+    }
+  }
+
+  async function kutuSilDugmesi(k) {
+    const listede = D.kalemler.some((x) => x.kutuId === k.id);
+    const uyari = listede
+      ? '\n\nBu kutu yük listesinde — oradan da çıkarılacak.'
+      : '';
+    if (!window.confirm('"' + k.ad + '" kutusu katalogdan silinsin mi?' + uyari)) {
+      return;
+    }
+    const c = await fetch('/api/kutu/' + encodeURIComponent(k.id), { method: 'DELETE' });
+    if (c.ok) {
+      // veriYukle kalemleri de suzuyor (silinmis kutu listede kalmaz)
+      await veriYukle();
+    }
+  }
+
+  // ===========================================================================
+  //  PLANLAR PENCERESI  (FAZ 3c)
+  //
+  //  Saklanan sey planin TARIFI: arac olculeri, yuk listesi, dizilis, pay.
+  //  Yerlesim sonucu saklanmaz - yuklerken motor yeniden hesaplar. Boylece
+  //  motor iyilestikce eski planlar da daha iyi sonuc verir.
+  // ===========================================================================
+
+  function planlariAc() {
+    gorunur($('katalogPerde'), false); // bkz. katalogAc - perdeler ust uste binmesin
+    gorunur($('planPerde'), true);
+    $('planHata').textContent = '';
+    planUyariTemizle();
+    planKaydetDenetle();
+    planlariCiz();
+  }
+
+  function planUyariTemizle() {
+    const eski = $('planPerde').querySelector('.plan-uyari');
+    if (eski) eski.remove();
+  }
+
+  /** Kaydetmek icin ad ve hesaplanmis bir plan sart. */
+  function planKaydetDenetle() {
+    const adVar = $('planAd').value.trim() !== '';
+    $('planKaydet').disabled = !adVar || !D.plan || D.kalemler.length === 0;
+  }
+
+  function planlariCiz() {
+    const govde = $('planGovde');
+    govde.innerHTML = '';
+
+    const varMi = D.planlar.length > 0;
+    $('planSayi').textContent = String(D.planlar.length);
+    gorunur($('planBosNot'), !varMi);
+    gorunur($('planTabloYer'), varMi);
+    if (!varMi) return;
+
+    for (const p of D.planlar) {
+      const tr = document.createElement('tr');
+
+      const hucre = (metinDeger, sinifAd) => {
+        const td = document.createElement('td');
+        td.textContent = metinDeger;
+        if (sinifAd) td.className = sinifAd;
+        tr.appendChild(td);
+        return td;
+      };
+
+      const adHucre = hucre(p.ad);
+      if (p.aciklama) adHucre.title = p.aciklama;
+
+      const a = p.arac || {};
+      hucre(cmYaz(a.uzunluk) + '×' + cmYaz(a.genislik) + '×' + cmYaz(a.yukseklik));
+      hucre(String((p.kalemler || []).length));
+
+      const st = Yerlesim.STRATEJILER.find((x) => x.id === p.strateji);
+      hucre(st ? st.ad : (p.strateji || '—'), st ? '' : 'isaret');
+
+      // Kayitli ozet sadece bilgi: yuklerken yeniden hesaplanacak
+      hucre(sayiYaz((p.ozet || {}).adet || 0));
+      hucre(tarihYaz(p.tarih), 'isaret');
+
+      const eylem = document.createElement('td');
+      eylem.className = 'eylem';
+
+      const yukle = document.createElement('button');
+      yukle.className = 'ufak';
+      yukle.textContent = 'Yükle';
+      yukle.addEventListener('click', () => planYukle(p));
+      eylem.appendChild(yukle);
+
+      const sil = document.createElement('button');
+      sil.className = 'ikincil ufak tehlike';
+      sil.textContent = 'Sil';
+      sil.addEventListener('click', () => planSilDugmesi(p));
+      eylem.appendChild(sil);
+
+      tr.appendChild(eylem);
+      govde.appendChild(tr);
+    }
+  }
+
+  async function planKaydetDugmesi() {
+    // Dugme zaten kapali olmali; yine de arac olmadan govde kurulamaz
+    if (!D.plan || !D.aracAktif) return;
+
+    const govde = {
+      ad: $('planAd').value.trim(),
+      aciklama: $('planNot').value.trim(),
+      // Aktif aracin OLCULERI saklanir, id'si degil: arac sonradan silinse
+      // ya da olculeri degistirilse plan yine de anlamli kalsin.
+      arac: {
+        ad: D.aracAktif.ad,
+        uzunluk: D.aracAktif.uzunluk,
+        genislik: D.aracAktif.genislik,
+        yukseklik: D.aracAktif.yukseklik,
+        maksAgirlik: 0,
+      },
+      strateji: D.ayar.strateji,
+      kalemler: D.kalemler.map((k) => ({
+        kutuId: k.kutuId,
+        adet: k.maks ? 0 : (k.adet || 0),
+        maks: !!k.maks,
+      })),
+      ayarlar: { pay: D.ayar.pay },
+      // Ozet yalnizca listede gostermek icin - kaynak dogru degil, tarif dogru
+      ozet: {
+        adet: D.plan.ozet.toplamAdet,
+        doluluk: D.plan.ozet.hacimDoluluk,
+        agirlik: 0,
+      },
+    };
+
+    $('planKaydet').disabled = true;
+    $('planHata').textContent = '';
+    try {
+      const c = await fetch('/api/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(govde),
+      });
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'Plan kaydedilemedi.');
+      $('planAd').value = '';
+      $('planNot').value = '';
+      await veriYukle();
+      planlariCiz();
+    } catch (h) {
+      $('planHata').textContent = h.message;
+    }
+    planKaydetDenetle();
+  }
+
+  async function planSilDugmesi(p) {
+    if (!window.confirm('"' + p.ad + '" planı silinsin mi?')) return;
+    const c = await fetch('/api/plan/' + encodeURIComponent(p.id), { method: 'DELETE' });
+    if (c.ok) {
+      await veriYukle();
+      planlariCiz();
+    }
+  }
+
+  /**
+   * Plan tarifini arayuze geri kurar.
+   *
+   * Arac konusu: plan olcuyu saklar, id'yi saklamaz. Ayni olculu kayitli bir
+   * arac varsa o aktif edilir. Yoksa KENDILIGINDEN ARAC OLUSTURULMAZ - hazir
+   * veri uretmemek kurali burada da gecerli; kullaniciya dugme sunulur.
+   */
+  async function planYukle(p) {
+    planUyariTemizle();
+
+    // 1) Yuk listesi - katalogdan silinmis kutular alinamaz
+    const gelen = [];
+    const eksikler = [];
+    for (const k of p.kalemler || []) {
+      if (D.kutular.some((x) => x.id === k.kutuId)) {
+        gelen.push({ kutuId: k.kutuId, adet: k.maks ? null : k.adet, maks: !!k.maks });
+      } else {
+        eksikler.push(k.kutuId);
+      }
+    }
+
+    D.kalemler = gelen;
+
+    // 2) Dizilis ve pay
+    if (Yerlesim.STRATEJILER.some((x) => x.id === p.strateji)) {
+      D.ayar.strateji = p.strateji;
+      $('stratejiSec').value = p.strateji;
+    }
+    D.ayar.pay = (p.ayarlar || {}).pay || 0;
+    $('pay').value = D.ayar.pay ? String(cmYap(D.ayar.pay)) : '';
+
+    // 3) Arac - olcusu tutan kayitli arac var mi?
+    const pa = p.arac || {};
+    const esles = D.araclar.find((a) =>
+      a.uzunluk === pa.uzunluk &&
+      a.genislik === pa.genislik &&
+      a.yukseklik === pa.yukseklik);
+
+    if (esles && (!D.aracAktif || D.aracAktif.id !== esles.id)) {
+      const c = await fetch('/api/arac-aktif/' + encodeURIComponent(esles.id),
+                            { method: 'POST' });
+      if (c.ok) await veriYukle();
+    }
+
+    kalemleriCiz();
+    stratejiAciklamaYaz();
+    hesapla();
+    planlariCiz();
+
+    // 4) Eksik kalanlari kullaniciya soyle - sessizce yutmak en kotusu
+    const notlar = [];
+    if (!esles) {
+      notlar.push('Bu planın aracı (' +
+        olcuMetni(pa.uzunluk, pa.genislik, pa.yukseklik) +
+        ') kayıtlı araçlar arasında yok.');
+    }
+    if (eksikler.length) {
+      notlar.push(eksikler.length + ' kutu katalogda bulunamadı, ' +
+        'yük listesine eklenemedi.');
+    }
+    if (notlar.length) planUyariGoster(notlar, esles ? null : pa);
+  }
+
+  /** @param {Object|null} aracKur  verilirse "araci olustur" dugmesi cikar */
+  function planUyariGoster(notlar, aracKur) {
+    const kutu = document.createElement('div');
+    kutu.className = 'plan-uyari';
+    kutu.textContent = notlar.join(' ');
+
+    if (aracKur) {
+      const b = document.createElement('button');
+      b.className = 'ufak';
+      b.textContent = 'Bu aracı oluştur ve aktif yap';
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        const c = await fetch('/api/arac', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ad: aracKur.ad || 'Plandan gelen araç',
+            uzunluk: aracKur.uzunluk,
+            genislik: aracKur.genislik,
+            yukseklik: aracKur.yukseklik,
+            // Sunucu kaydedilen araci her zaman aktif yapiyor (server.js)
+            maksAgirlik: 0,
+          }),
+        });
+        if (c.ok) {
+          await veriYukle();
+          planUyariTemizle();
+          planlariCiz();
+        } else {
+          b.disabled = false;
+        }
+      });
+      kutu.appendChild(b);
+    }
+
+    const pencere = $('planPerde').querySelector('.pencere');
+    pencere.insertBefore(kutu, pencere.querySelector('.plan-kaydet'));
+  }
+
+  // ===========================================================================
   //  OLAYLAR
   // ===========================================================================
 
@@ -873,13 +1279,37 @@
       location.replace('/giris');
     });
 
+    // -- katalog penceresi --
+    $('katalogAc').addEventListener('click', katalogAc);
+    $('katalogKapat').addEventListener('click',
+      () => gorunur($('katalogPerde'), false));
+    $('katalogYeniKutu').addEventListener('click', () => kutuFormuAc(null));
+
+    // -- planlar penceresi --
+    $('planlarAc').addEventListener('click', planlariAc);
+    $('planKapat').addEventListener('click', () => gorunur($('planPerde'), false));
+    $('planKaydet').addEventListener('click', planKaydetDugmesi);
+    $('planAd').addEventListener('input', planKaydetDenetle);
+
     // -- pencereler: Esc kapatir, perdeye tiklamak kapatir --
+    //
+    // Esc en ustteki pencereyi kapatir: form pencereleri liste pencerelerinin
+    // ustunde duruyor (.perde.ust), o yuzden once onlara bakilir. Yoksa
+    // katalogdan kutu formu acipEsc'e basinca ikisi birden kapaniyor.
+    const FORM_PERDELERI = ['aracPerde', 'kutuPerde'];
+    const LISTE_PERDELERI = ['katalogPerde', 'planPerde'];
+
     document.addEventListener('keydown', (o) => {
       if (o.key !== 'Escape') return;
-      gorunur($('aracPerde'), false);
-      gorunur($('kutuPerde'), false);
+      const acikForm = FORM_PERDELERI.filter((id) => !$(id).hidden);
+      if (acikForm.length) {
+        for (const id of acikForm) gorunur($(id), false);
+        return;
+      }
+      for (const id of LISTE_PERDELERI) gorunur($(id), false);
     });
-    for (const id of ['aracPerde', 'kutuPerde']) {
+
+    for (const id of FORM_PERDELERI.concat(LISTE_PERDELERI)) {
       $(id).addEventListener('click', (o) => {
         if (o.target === $(id)) gorunur($(id), false);
       });
