@@ -39,12 +39,12 @@
     <div class="not"></div>
   </div>
   <div class="gosterge bos" id="gUzunluk">
-    <div class="etiket">Kullanılan Uzunluk</div>
+    <div class="etiket">Kullanılan Uzunluk — M (metre)</div>
     <div class="deger">—</div>
     <div class="not"></div>
   </div>
   <div class="gosterge bos" id="gYukseklik">
-    <div class="etiket">Yük Yüksekliği</div>
+    <div class="etiket">Yük Yüksekliği — M (metre)</div>
     <div class="deger">—</div>
     <div class="not"></div>
   </div>
@@ -131,11 +131,12 @@
     <section class="bolum">
       <h2>⚙️ Diğer Ayarlar</h2>
       <label class="sat">
-        <span>Kutular arası pay</span>
-        <input type="number" id="pay" min="0" max="50" step="0.1" placeholder="cm">
+        <span>Kutular arası pay (MM)</span>
+        <input type="number" id="pay" min="0" max="500" step="1" placeholder="MM">
       </label>
       <p class="bos-not" style="padding:0 0 4px">
-        Santimetre. Boş bırakırsan sıkı dizilim.
+        <strong>MM (milimetre)</strong> — kutu ölçüleriyle aynı birim.
+        Boş bırakırsan sıkı dizilim.
       </p>
     </section>
 
@@ -281,8 +282,8 @@
                 <th>Kutu</th>
                 <th>Adet</th>
                 <th>Diziliş (nx×ny×nz)</th>
-                <th>Duruş (U×G×Y, cm)</th>
-                <th>Konum (m)</th>
+                <th>Duruş U×G×Y — MM (milimetre)</th>
+                <th>Konum — M (metre)</th>
               </tr>
             </thead>
             <tbody id="listeGovde"></tbody>
@@ -300,7 +301,7 @@
                 <th>Kutu</th>
                 <th>Diziliş (nx×ny×nz)</th>
                 <th>Adet</th>
-                <th>Duruş (U×G×Y, cm)</th>
+                <th>Duruş U×G×Y — MM (milimetre)</th>
                 <th>Konum X</th>
               </tr>
             </thead>
@@ -324,8 +325,10 @@
 <div class="perde ust" id="aracPerde" hidden>
   <form class="pencere" id="aracForm">
     <h3 id="aracFormBaslik">Yeni Araç</h3>
-    <p class="ipucu">Ölçüler <strong>santimetre</strong> ve <strong>iç ölçüdür</strong> —
-      yükün girdiği boşluk, dış gabari değil.</p>
+    <p class="ipucu">Ölçüler <strong>CM (santimetre)</strong> ve
+      <strong>iç ölçüdür</strong> — yükün girdiği boşluk, dış gabari değil.
+      <br>Dikkat: kutu ölçüleri <strong>MM (milimetre)</strong> girilir, araç
+      ölçüleri <strong>CM (santimetre)</strong>.</p>
 
     <input type="hidden" id="aracId">
 
@@ -336,16 +339,16 @@
 
     <div class="ikili">
       <label class="sat">
-        <span>İç uzunluk</span>
-        <input type="number" id="aracUzunluk" min="0.1" max="4000" step="0.1" placeholder="cm">
+        <span>İç uzunluk (CM)</span>
+        <input type="number" id="aracUzunluk" min="0.1" max="4000" step="0.1" placeholder="CM">
       </label>
       <label class="sat">
-        <span>İç genişlik</span>
-        <input type="number" id="aracGenislik" min="0.1" max="600" step="0.1" placeholder="cm">
+        <span>İç genişlik (CM)</span>
+        <input type="number" id="aracGenislik" min="0.1" max="600" step="0.1" placeholder="CM">
       </label>
       <label class="sat">
-        <span>İç yükseklik</span>
-        <input type="number" id="aracYukseklik" min="0.1" max="600" step="0.1" placeholder="cm">
+        <span>İç yükseklik (CM)</span>
+        <input type="number" id="aracYukseklik" min="0.1" max="600" step="0.1" placeholder="CM">
       </label>
     </div>
 
@@ -387,7 +390,7 @@
           <tr>
             <th>Kutu</th>
             <th>Grup</th>
-            <th>Ölçü (cm)</th>
+            <th>Ölçü — MM (milimetre)</th>
             <th>Kat</th>
             <th>Yatık</th>
             <th>Sığar</th>
@@ -440,7 +443,7 @@
         <thead>
           <tr>
             <th>Ad</th>
-            <th>Araç (cm)</th>
+            <th>Araç — CM (santimetre)</th>
             <th>Kalem</th>
             <th>Diziliş</th>
             <th>Kayıtlı adet</th>
@@ -505,8 +508,9 @@
 <div class="perde ust" id="kutuPerde" hidden>
   <form class="pencere" id="kutuForm">
     <h3 id="kutuFormBaslik">Yeni Kutu</h3>
-    <p class="ipucu">Ölçüler <strong>santimetre</strong>. Hangi kenarın uzunluk
-      olduğu önemli değil — motor 6 duruşu da dener.</p>
+    <p class="ipucu">Ölçüler <strong>MM (milimetre)</strong> — araç ölçüsünden
+      farklı, o <strong>CM (santimetre)</strong> girilir.
+      Hangi kenarın uzunluk olduğu önemli değil — motor 6 duruşu da dener.</p>
 
     <input type="hidden" id="kutuId">
 
@@ -522,16 +526,16 @@
 
     <div class="ikili">
       <label class="sat">
-        <span>Uzunluk</span>
-        <input type="number" id="kutuUzunluk" min="0.1" max="4000" step="0.1" placeholder="cm">
+        <span>Uzunluk (MM)</span>
+        <input type="number" id="kutuUzunluk" min="1" max="40000" step="1" placeholder="MM">
       </label>
       <label class="sat">
-        <span>Genişlik</span>
-        <input type="number" id="kutuGenislik" min="0.1" max="4000" step="0.1" placeholder="cm">
+        <span>Genişlik (MM)</span>
+        <input type="number" id="kutuGenislik" min="1" max="40000" step="1" placeholder="MM">
       </label>
       <label class="sat">
-        <span>Yükseklik</span>
-        <input type="number" id="kutuYukseklik" min="0.1" max="4000" step="0.1" placeholder="cm">
+        <span>Yükseklik (MM)</span>
+        <input type="number" id="kutuYukseklik" min="1" max="40000" step="1" placeholder="MM">
       </label>
     </div>
 

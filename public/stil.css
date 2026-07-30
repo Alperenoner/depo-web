@@ -277,7 +277,9 @@ button.tam { width: 100%; }
 
 /* Girilen cm degerinin mm karsiligi - yanlis birim girisi hemen belli olsun */
 .olcu-yansi {
-  margin: 2px 0 0;
+  /* Alt bosluk: yansima satiri artik iki birim birden yaziyor
+     ("575 × 450 × 242 MM = 57,5 × 45 × 24,2 CM"), altindaki alana yapismasin */
+  margin: 2px 0 8px;
   font-size: 11.5px;
   color: var(--soluk);
   font-variant-numeric: tabular-nums;

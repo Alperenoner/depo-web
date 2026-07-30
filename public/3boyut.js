@@ -862,14 +862,15 @@
       const b = S.kutuBilgisi[v.instanceId];
       if (!b) { S.balon.hidden = true; return; }
       metin = b.ad + '\n' +
-              (b.ku / 10) + '×' + (b.kg / 10) + '×' + (b.ky / 10) + ' cm\n' +
-              'konum ' + (b.x / 1000).toFixed(2) + ' m · ' +
-              'yükseklik ' + (b.z / 1000).toFixed(2) + ' m';
+              // Kutu olcusu MM (arayuzun her yerinde oyle), konum M
+              b.ku + '×' + b.kg + '×' + b.ky + ' MM\n' +
+              'konum ' + (b.x / 1000).toFixed(2) + ' M · ' +
+              'yükseklik ' + (b.z / 1000).toFixed(2) + ' M';
     } else {
       const d = v.object.userData;
       metin = d.ad + '\n' +
               d.nx + '×' + d.ny + '×' + d.nz + ' = ' + d.adet + ' kutu\n' +
-              'konum ' + (d.x / 1000).toFixed(2) + ' m';
+              'konum ' + (d.x / 1000).toFixed(2) + ' M';
     }
 
     S.balon.textContent = metin;

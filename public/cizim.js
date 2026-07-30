@@ -89,9 +89,11 @@
     minimumFractionDigits: 0, maximumFractionDigits: 1,
   });
 
+  // Birim buyuk harf: arayuzun her yerinde MM / CM / M boyle yaziliyor,
+  // kullanici hangi olcunun hangi birimde oldugunu karistirmasin.
   const metreYaz = (mm) => (Number(mm || 0) / 1000).toLocaleString('tr-TR', {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }) + ' m';
+  }) + ' M';
 
   // ===========================================================================
   //  SAHNE KURULUMU

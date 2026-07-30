@@ -5,13 +5,15 @@
    Cizgi ciken isler cizim.js'te; burada sadece hangi sekmenin gorundugu ve
    hangi katmanin secildigi tutulur.
 
-   Iki kural:
+   Uc kural:
    1) HAZIR OLCU YOKTUR. Arac ve kutu olculeri tamamen kullanicidan gelir,
-      placeholder'da bile ornek sayi yazmaz - sadece birim (cm).
+      placeholder'da bile ornek sayi yazmaz - sadece birim (MM / CM).
       Agirlik arayuzden tamamen kaldirildi: bu surum hacim/adet planlamasi
       yapiyor. Sunucuya 0 gidiyor, motorun kapasite kontrolu devre disi.
    2) BUTUN HESAP TARAYICIDA. Olcu degistirince sunucuya gidilmez, motor
       dogrudan cagrilir; sunucu sadece kalici kayit tutar.
+   3) IKI BIRIM VAR: KUTU olculeri MM, ARAC olculeri CM, arac icindeki
+      KONUM M. Ayrintili gerekce asagida "birim cevrim" bolumunde.
    ========================================================================== */
 
 (function () {
@@ -91,12 +93,25 @@
 
   // ------------------------------------------------------------ birim cevrim
   //
-  // ARAYUZ SANTIMETRE gosterir/alir, ICERIDE HER SEY MILIMETRE kalir.
+  // ICERIDE HER SEY MILIMETRE. Veritabani, motor ve sunucu dogrulamasi mm
+  // tam sayi ile calisir - motorun giyotin kesim matematigi tam sayi izgaraya
+  // dayaniyor, ondalikli birime cevirmek yuvarlama hatasi sokar ve
+  // dogrulanmis sayilari (1.440 koli, %96,2) bozar.
   //
-  // Neden mm iceride: motorun giyotin kesim matematigi tam sayi izgaraya
-  // dayaniyor. Cekirdegi ondalikli birime cevirmek yuvarlama hatasi sokar ve
-  // dogrulanmis sayilari (1.440 koli, %96,2) bozar. O yuzden cevrim SADECE
-  // form sinirinda yapilir - veritabani, motor ve sunucu dogrulamasi mm.
+  // ARAYUZDE IKI BIRIM VAR, karistirmamak icin kural tek cumle:
+  //
+  //   ARACA ait olcu   -> CM (santimetre)   ornek: 1400 × 248 × 270
+  //   KUTUYA ait olcu  -> MM (milimetre)    ornek: 575 × 450 × 242
+  //   Arac icindeki KONUM -> M (metre)      ornek: 0,00 – 13,80 m
+  //
+  // Neden ayri: kutu olculeri katalogda mm ile geliyor (575 × 450 × 242 gibi),
+  // cm'ye cevirip 57,5 yazmak zorunda kalmak hataya davetiye - kullanici mm
+  // degerini cm alanina yazdiginda kutu 10 kat buyuyor ve "hicbir kutu
+  // sigmiyor" haline dusuyordu. Arac olcusu ise metre/santimetre konusulur
+  // (14 m dorse), orada cm dogru birim.
+  //
+  // Cevrim SADECE form sinirinda yapilir. Kutu tarafinda artik cevrim YOK:
+  // girilen sayi dogrudan mm.
 
   const mmYap = (cm) => (cm === null ? null : Math.round(cm * 10));
   const cmYap = (mm) => Number(mm || 0) / 10;
@@ -109,8 +124,18 @@
   /** Form alanina yazilacak cm degeri (nokta ondalikli, input[number] icin). */
   const cmAlan = (mm) => String(cmYap(mm));
 
+  /** mm -> milimetre metni (kutu olculeri). Binlik ayraci: 40000 -> "40.000" */
+  const mmYaz = (mm) => Number(mm || 0).toLocaleString('tr-TR', {
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  });
+
+  /** ARAC olcusu - santimetre */
   const olcuMetni = (mmU, mmG, mmY) =>
-    cmYaz(mmU) + ' × ' + cmYaz(mmG) + ' × ' + cmYaz(mmY) + ' cm';
+    cmYaz(mmU) + ' × ' + cmYaz(mmG) + ' × ' + cmYaz(mmY) + ' CM';
+
+  /** KUTU olcusu - milimetre */
+  const kutuOlcuMetni = (mmU, mmG, mmY) =>
+    mmYaz(mmU) + ' × ' + mmYaz(mmG) + ' × ' + mmYaz(mmY) + ' MM';
 
   /** Bos string / null -> null; aksi halde sayi. */
   const sayiOku = (el) => {
@@ -256,8 +281,8 @@
 
     // Girilen cm'nin mm karsiligini goster - yanlis birim girisi hemen belli olsun
     $('aracYansi').textContent = (u && g && y)
-      ? 'Motora giden: ' + u + ' × ' + g + ' × ' + y + ' mm' +
-        '  (' + metre(u) + ' × ' + metre(g) + ' × ' + metre(y) + ' m)'
+      ? 'Motora giden: ' + mmYaz(u) + ' × ' + mmYaz(g) + ' × ' + mmYaz(y) +
+        ' MM  (' + metre(u) + ' × ' + metre(g) + ' × ' + metre(y) + ' M)'
       : '';
   }
 
@@ -338,8 +363,8 @@
       for (const k of liste) {
         const o = document.createElement('option');
         o.value = k.id;
-        o.textContent = k.ad + '  (' + cmYaz(k.uzunluk) + '×' + cmYaz(k.genislik) +
-                        '×' + cmYaz(k.yukseklik) + ' cm)';
+        o.textContent = k.ad + '  (' +
+                        kutuOlcuMetni(k.uzunluk, k.genislik, k.yukseklik) + ')';
         hedef.appendChild(o);
       }
       if (!tekGrup) sec.appendChild(hedef);
@@ -372,10 +397,10 @@
 
     f.ad.value = mevcut ? mevcut.ad : '';
     $('kutuGrup').value = mevcut ? (mevcut.grup || '') : '';
-    // Kayitli deger mm; forma cm olarak yazilir
-    f.uzunluk.value = mevcut ? cmAlan(mevcut.uzunluk) : '';
-    f.genislik.value = mevcut ? cmAlan(mevcut.genislik) : '';
-    f.yukseklik.value = mevcut ? cmAlan(mevcut.yukseklik) : '';
+    // Kayitli deger zaten mm, kutu formu da mm - cevrim yok
+    f.uzunluk.value = mevcut ? String(mevcut.uzunluk) : '';
+    f.genislik.value = mevcut ? String(mevcut.genislik) : '';
+    f.yukseklik.value = mevcut ? String(mevcut.yukseklik) : '';
     $('kutuMaksIstif').value = mevcut ? mevcut.maksIstif : 0;
     $('kutuYatirilabilir').checked = mevcut ? !!mevcut.yatirilabilir : true;
     // Renk tek istisna: yeni kutuya sirayla bir renk atanir
@@ -393,9 +418,10 @@
     const f = kutuAlanlari();
     const s = D.sinirlar;
     const kenar = s.kutuKenar || [1, 40000];
-    const u = mmYap(sayiOku(f.uzunluk));
-    const g = mmYap(sayiOku(f.genislik));
-    const y = mmYap(sayiOku(f.yukseklik));
+    // Girilen sayi DOGRUDAN mm - kutu formunda cevrim yok
+    const u = sayiOku(f.uzunluk);
+    const g = sayiOku(f.genislik);
+    const y = sayiOku(f.yukseklik);
 
     const tamam =
       f.ad.value.trim() !== '' &&
@@ -404,8 +430,11 @@
       aralikta(y, kenar[0], kenar[1]);
     $('kutuKaydet').disabled = !tamam;
 
+    // Yansima artik CM karsiligini gosteriyor: girilen sayi zaten mm, onu
+    // tekrar yazmanin bilgisi yok. Yanlis birim girisi burada yakalanir -
+    // 57,5 yerine 575 yazildiginda "5.750 MM = 575 CM" satiri gozune batar.
     $('kutuYansi').textContent = (u && g && y)
-      ? 'Motora giden: ' + u + ' × ' + g + ' × ' + y + ' mm'
+      ? kutuOlcuMetni(u, g, y) + '  =  ' + olcuMetni(u, g, y)
       : '';
   }
 
@@ -416,10 +445,10 @@
       id: $('kutuId').value || undefined,
       ad: f.ad.value.trim(),
       grup: $('kutuGrup').value.trim(),
-      // cm -> mm
-      uzunluk: mmYap(sayiOku(f.uzunluk)),
-      genislik: mmYap(sayiOku(f.genislik)),
-      yukseklik: mmYap(sayiOku(f.yukseklik)),
+      // Form zaten mm veriyor - cevrim yok
+      uzunluk: sayiOku(f.uzunluk),
+      genislik: sayiOku(f.genislik),
+      yukseklik: sayiOku(f.yukseklik),
       // Agirlik arayuzden kaldirildi - sunucu zorunlu tuttugu icin 0
       agirlik: 0,
       renk: $('kutuRenk').value,
@@ -482,7 +511,8 @@
       benek.style.background = kutu.renk || '#888';
       ad.appendChild(benek);
       ad.appendChild(document.createTextNode(kutu.ad));
-      ad.title = kutu.ad + ' — ' + olcuMetni(kutu.uzunluk, kutu.genislik, kutu.yukseklik);
+      ad.title = kutu.ad + ' — ' +
+                 kutuOlcuMetni(kutu.uzunluk, kutu.genislik, kutu.yukseklik);
       sat.appendChild(ad);
 
       // Adet alani
@@ -674,12 +704,12 @@
       d >= 85 ? 'iyi' : d >= 60 ? 'orta' : '');
 
     // 3) Kullanilan uzunluk
-    gostergeYaz($('gUzunluk'), metre(o.kullanilanUzunluk) + ' m',
-      'arkada ' + metre(o.bosUzunluk) + ' m boş', '');
+    gostergeYaz($('gUzunluk'), metre(o.kullanilanUzunluk) + ' M',
+      'arkada ' + metre(o.bosUzunluk) + ' M boş', '');
 
     // 4) Yuk yuksekligi
-    gostergeYaz($('gYukseklik'), metre(o.yukYuksekligi) + ' m',
-      'tavana ' + metre(o.bosYukseklik) + ' m', '');
+    gostergeYaz($('gYukseklik'), metre(o.yukYuksekligi) + ' M',
+      'tavana ' + metre(o.bosYukseklik) + ' M', '');
   }
 
   // ---- sigmayan uyarisi ----
@@ -736,8 +766,8 @@
 
       hucre(b.nx + ' × ' + b.ny + ' × ' + b.nz);
       hucre(sayiYaz(b.adet));
-      hucre(cmYaz(b.ku) + '×' + cmYaz(b.kg) + '×' + cmYaz(b.ky) + '  ' + b.durusAd);
-      hucre(metre(b.x) + ' m');
+      hucre(mmYaz(b.ku) + '×' + mmYaz(b.kg) + '×' + mmYaz(b.ky) + '  ' + b.durusAd);
+      hucre(metre(b.x) + ' M');
 
       govde.appendChild(tr);
     }
@@ -834,7 +864,7 @@
     }
 
     el.textContent = 'Katman ' + D.katmanIndis + ' / ' + n + ' · ' +
-                     cmYaz(z) + '–' + cmYaz(tepe) + ' cm';
+                     cmYaz(z) + '–' + cmYaz(tepe) + ' CM';
   }
 
   // ---- cizim ----
@@ -1091,7 +1121,7 @@
 
       satir('Hacim doluluğu', '%' + sayiYaz(s.doluluk, 1));
       satir('Blok sayısı', sayiYaz(s.plan.ozet.blokSayisi));
-      satir('Kullanılan uzunluk', metre(s.plan.ozet.kullanilanUzunluk) + ' m');
+      satir('Kullanılan uzunluk', metre(s.plan.ozet.kullanilanUzunluk) + ' M');
 
       // En iyiye gore fark
       satir(
@@ -1149,12 +1179,12 @@
       ['Toplam', sayiYaz(o.toplamAdet) + ' kutu · ' +
                  sayiYaz(o.blokSayisi) + ' blok · %' + sayiYaz(o.hacimDoluluk, 1) +
                  ' doluluk'],
-      ['Yük', metre(o.kullanilanUzunluk) + ' m uzunluk · ' +
-              metre(o.yukYuksekligi) + ' m yükseklik'],
+      ['Yük', metre(o.kullanilanUzunluk) + ' M uzunluk · ' +
+              metre(o.yukYuksekligi) + ' M yükseklik'],
       ['Tarih', tarihYaz(new Date())],
     ];
     if (D.ayar.pay > 0) {
-      satirlar.splice(2, 0, ['Kutular arası pay', cmYaz(D.ayar.pay) + ' cm']);
+      satirlar.splice(2, 0, ['Kutular arası pay', mmYaz(D.ayar.pay) + ' MM']);
     }
     for (const [etiket, deger] of satirlar) {
       const sat = document.createElement('div');
@@ -1197,7 +1227,7 @@
 
       hucre(sayiYaz(b.adet));
       hucre(b.nx + ' × ' + b.ny + ' × ' + b.nz);
-      hucre(cmYaz(b.ku) + '×' + cmYaz(b.kg) + '×' + cmYaz(b.ky) + ' ' + b.durusAd);
+      hucre(mmYaz(b.ku) + '×' + mmYaz(b.kg) + '×' + mmYaz(b.ky) + ' ' + b.durusAd);
       // Blogun kapladigi uzunluk araligi - yukleyen kisi nereye koyacagini bilsin
       hucre(metre(b.x) + ' – ' + metre(b.x + b.nx * b.adimU));
 
@@ -1281,7 +1311,7 @@
       };
 
       hucre(k.grup || '—', k.grup ? '' : 'isaret');
-      hucre(cmYaz(k.uzunluk) + '×' + cmYaz(k.genislik) + '×' + cmYaz(k.yukseklik));
+      hucre(mmYaz(k.uzunluk) + '×' + mmYaz(k.genislik) + '×' + mmYaz(k.yukseklik));
       // maksIstif 0 = sinirsiz
       hucre(k.maksIstif ? String(k.maksIstif) : '∞', k.maksIstif ? '' : 'isaret');
       hucre(k.yatirilabilir ? 'evet' : 'hayır', k.yatirilabilir ? '' : 'isaret');
@@ -1529,7 +1559,7 @@
       $('stratejiSec').value = p.strateji;
     }
     D.ayar.pay = (p.ayarlar || {}).pay || 0;
-    $('pay').value = D.ayar.pay ? String(cmYap(D.ayar.pay)) : '';
+    $('pay').value = D.ayar.pay ? String(D.ayar.pay) : '';
 
     // 3) Arac - olcusu tutan kayitli arac var mi?
     const pa = p.arac || {};
@@ -1651,11 +1681,12 @@
     });
 
     // -- ayarlar --
-    // Pay cm girilir, motora mm gider
+    // Pay MM girilir, motora oldugu gibi gider. Pay bir KUTU olcusudur
+    // (kutular arasindaki bosluk), o yuzden kutu formuyla ayni birimde.
     $('pay').addEventListener('input', () => {
-      const mm = mmYap(sayiOku($('pay')));
+      const mm = sayiOku($('pay'));
       const ust = (D.sinirlar.pay || [0, 500])[1];
-      D.ayar.pay = mm === null ? 0 : Math.min(Math.max(mm, 0), ust);
+      D.ayar.pay = mm === null ? 0 : Math.min(Math.max(Math.round(mm), 0), ust);
       hesapla();
     });
     // -- sekmeler --

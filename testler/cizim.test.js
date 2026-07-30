@@ -151,8 +151,8 @@ test('cmYaz mm -> cm, gereksiz sifir yazmaz', () => {
   assert.equal(Cizim.cmYaz(0), '0');
 });
 
-test('metreYaz mm -> iki basamakli metre', () => {
-  assert.equal(Cizim.metreYaz(14000), '14,00 m');
-  assert.equal(Cizim.metreYaz(1380), '1,38 m');
-  assert.equal(Cizim.metreYaz(0), '0,00 m');
+test('metreYaz mm -> iki basamakli METRE (birim buyuk harf)', () => {
+  assert.equal(Cizim.metreYaz(14000), '14,00 M');
+  assert.equal(Cizim.metreYaz(1380), '1,38 M');
+  assert.equal(Cizim.metreYaz(0), '0,00 M');
 });
