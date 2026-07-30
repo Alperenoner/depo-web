@@ -54,6 +54,19 @@ const VARSAYILAN_STRATEJI = STRATEJI_IDLERI.includes('optimum')
   ? 'optimum'
   : STRATEJI_IDLERI[0];
 
+// Kutu FORMAT secenekleri. TEK KAYNAK burasi: arayuzun acilir listesi bu
+// diziden uretiliyor (panoVerisi -> formatlar), elle yazilmiyor. Strateji
+// listesindeki ayrisma hatasi (yukarida) burada tekrarlanmasin diye.
+//
+// Bos deger de gecerli: format girmek zorunlu degil.
+const FORMATLAR = ['KSRCSSLI_v2', 'KSDSPSSL_v2', 'KSBOSSTD_v2'];
+
+/** Format listede yoksa bos donen surum - sunucu tarayiciya guvenmez. */
+function format(deger) {
+  const m = metin(deger, SINIR.metinKisa);
+  return FORMATLAR.includes(m) ? m : '';
+}
+
 // --- Temel cevirmenler -----------------------------------------------------
 
 /** Sayiyi tam sayiya cevirip [alt, ust] arasina kirpar. Gecersizse null. */
@@ -189,6 +202,10 @@ function kutu(gelen) {
       maksIstif: tamSayi(g.maksIstif, SINIR.maksIstif) ?? 0,
       icerik: metin(g.icerik, SINIR.metinUzun),
       aciklama: metin(g.aciklama ?? g.not, SINIR.metinUzun),
+      // Material serbest metin, format ise sabit listeden (bkz. FORMATLAR).
+      // Ikisi de ZORUNLU DEGIL - bos gecilebilir.
+      material: metin(g.material, SINIR.metinKisa),
+      format: format(g.format),
     },
   };
 }
@@ -280,10 +297,12 @@ module.exports = {
   VARSAYILAN_RENK,
   STRATEJI_IDLERI,
   VARSAYILAN_STRATEJI,
+  FORMATLAR,
   tamSayi,
   ondalik,
   metin,
   renk,
+  format,
   mantik,
   kimlik,
   kimlikUret,

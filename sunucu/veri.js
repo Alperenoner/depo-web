@@ -46,6 +46,8 @@ function kutuCevir(s) {
     maksIstif: s.maks_istif,
     icerik: s.icerik,
     aciklama: s.aciklama,
+    material: s.material,
+    format: s.format,
   };
 }
 
@@ -170,12 +172,12 @@ async function kutuKaydet(kutu) {
   const { rows } = await sorgu(
     `insert into kutular
        (id, ad, grup, uzunluk, genislik, yukseklik, agirlik, renk,
-        yatirilabilir, maks_istif, icerik, aciklama)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        yatirilabilir, maks_istif, icerik, aciklama, material, format)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      on conflict (id) do update set
        ad = $2, grup = $3, uzunluk = $4, genislik = $5, yukseklik = $6,
        agirlik = $7, renk = $8, yatirilabilir = $9, maks_istif = $10,
-       icerik = $11, aciklama = $12
+       icerik = $11, aciklama = $12, material = $13, format = $14
      returning *`,
     [
       kutu.id,
@@ -190,6 +192,8 @@ async function kutuKaydet(kutu) {
       kutu.maksIstif,
       kutu.icerik,
       kutu.aciklama,
+      kutu.material,
+      kutu.format,
     ]
   );
   return kutuCevir(rows[0]);
@@ -324,6 +328,9 @@ async function panoVerisi() {
     // dogrulamasi ayni sayilari kullansin, iki yerde ayri yasamasin.
     // (Sunucu yine de her girdiyi kendisi dogrular - bu sadece kolaylik.)
     sinirlar: require('./dogrula').SINIR,
+    // Format secenekleri sunucudan geliyor: arayuz listeyi elle yazmasin,
+    // iki taraf ayrisamasin (bkz. dogrula.js FORMATLAR).
+    formatlar: require('./dogrula').FORMATLAR,
   };
 }
 

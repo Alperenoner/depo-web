@@ -29,6 +29,8 @@
     kutular: [],
     planlar: [],
     sinirlar: {},
+    // Format secenekleri sunucudan gelir (dogrula.js FORMATLAR) - elle yazilmaz
+    formatlar: [],
     // Yuk listesi: [{kutuId, adet:number|null, maks:boolean}]
     kalemler: [],
     // agirlikSiniri yok: agirlik arayuzden kaldirildi, maksAgirlik=0 gittigi
@@ -164,6 +166,7 @@
     D.kutular = v.kutular || [];
     D.planlar = v.planlar || [];
     D.sinirlar = v.sinirlar || {};
+    D.formatlar = v.formatlar || [];
 
     $('baslik').textContent = D.ayarlar.baslik || 'DEPOLAMA';
     $('altBaslik').textContent = D.ayarlar.altBaslik || '';
@@ -397,6 +400,8 @@
 
     f.ad.value = mevcut ? mevcut.ad : '';
     $('kutuGrup').value = mevcut ? (mevcut.grup || '') : '';
+    $('kutuMaterial').value = mevcut ? (mevcut.material || '') : '';
+    formatSecenekleriniCiz(mevcut ? (mevcut.format || '') : '');
     // Kayitli deger zaten mm, kutu formu da mm - cevrim yok
     f.uzunluk.value = mevcut ? String(mevcut.uzunluk) : '';
     f.genislik.value = mevcut ? String(mevcut.genislik) : '';
@@ -412,6 +417,41 @@
     gorunur($('kutuPerde'), true);
     kutuFormDenetle();
     f.ad.focus();
+  }
+
+  /**
+   * Format acilir listesini SUNUCUDAN gelen liste ile doldurur.
+   * Secenekler burada elle yazilmaz: dogrula.js'teki FORMATLAR tek kaynak,
+   * sunucu onu /api/veri ile gonderiyor. Elle yazsaydik biri degistiginde
+   * digeri sessizce eskir - strateji listesinde tam bu olmustu (FAZ 3c).
+   *
+   * Kayitli kutunun formati listede yoksa (liste sonradan degismisse) o deger
+   * yine de gosterilir, "artik gecerli degil" notuyla - sessizce silinmesin.
+   */
+  function formatSecenekleriniCiz(secili) {
+    const sec = $('kutuFormat');
+    sec.innerHTML = '';
+
+    const bos = document.createElement('option');
+    bos.value = '';
+    bos.textContent = '— format yok —';
+    sec.appendChild(bos);
+
+    for (const f of D.formatlar) {
+      const o = document.createElement('option');
+      o.value = f;
+      o.textContent = f;
+      sec.appendChild(o);
+    }
+
+    if (secili && !D.formatlar.includes(secili)) {
+      const o = document.createElement('option');
+      o.value = secili;
+      o.textContent = secili + '  (artık listede yok)';
+      sec.appendChild(o);
+    }
+
+    sec.value = secili || '';
   }
 
   function kutuFormDenetle() {
@@ -445,6 +485,8 @@
       id: $('kutuId').value || undefined,
       ad: f.ad.value.trim(),
       grup: $('kutuGrup').value.trim(),
+      material: $('kutuMaterial').value.trim(),
+      format: $('kutuFormat').value,
       // Form zaten mm veriyor - cevrim yok
       uzunluk: sayiOku(f.uzunluk),
       genislik: sayiOku(f.genislik),
@@ -480,13 +522,46 @@
   //  YUK LISTESI
   // ===========================================================================
 
+  // ---------------------------------------------------------------- QTY
+  //
+  //  Kullanici QTY[TH] yazar, QTY = QTY[TH] / 10 olarak hesaplanir ve motora
+  //  giden kutu adedi QTY'dir. QTY[TH] yalnizca giris kolayligi.
+  //
+  //  10'a TAM bolunmeyen deger gecersiz sayilir: o kalem hesaba katilmaz ve
+  //  kirmizi uyari cikar. Sessizce yuvarlamak yanlis olurdu - 255 yazan biri
+  //  25 mi 26 mi koli istedigini bilmiyoruz, tahmin etmek yerine soruyoruz.
+
+  const QTY_BOLEN = 10;
+
+  /** @returns {{adet: number|null, hata: string}} */
+  function qtyHesapla(qtyTh) {
+    if (qtyTh === null || qtyTh === '') return { adet: null, hata: '' };
+    const n = Number(qtyTh);
+    if (!Number.isFinite(n) || n <= 0) return { adet: null, hata: '' };
+    if (!Number.isInteger(n)) {
+      return { adet: null, hata: 'QTY[TH] tam sayı olmalı' };
+    }
+    if (n % QTY_BOLEN !== 0) {
+      return {
+        adet: null,
+        hata: QTY_BOLEN + '\u2019a tam bölünmüyor (' + sayiYaz(n) + ' / ' +
+              QTY_BOLEN + ' = ' + (n / QTY_BOLEN).toLocaleString('tr-TR') + ')',
+      };
+    }
+    return { adet: n / QTY_BOLEN, hata: '' };
+  }
+
   function kalemEkleDugmesi() {
     const id = $('kutuSec').value;
     if (!id) return;
     if (D.kalemler.some((k) => k.kutuId === id)) return; // ayni kutu iki kez olmasin
     const azami = D.sinirlar.kalemAzami || 60;
     if (D.kalemler.length >= azami) return;
-    D.kalemler.push({ kutuId: id, adet: null, maks: true });
+    // maks:false ile eklenir - OTOMATIK DOLDURMA YOK.
+    // Onceden maks:true idi ve kutu eklenir eklenmez arac "sigdigi kadar"
+    // doluyordu; kullanici daha adedi yazmadan 1.440 kutuluk plan cikiyordu.
+    // Artik QTY[TH] girilene kadar hesap yapilmaz.
+    D.kalemler.push({ kutuId: id, qtyTh: null, adet: null, maks: false });
     kalemleriCiz();
     hesapla();
   }
@@ -515,21 +590,6 @@
                  kutuOlcuMetni(kutu.uzunluk, kutu.genislik, kutu.yukseklik);
       sat.appendChild(ad);
 
-      // Adet alani
-      const adet = document.createElement('input');
-      adet.type = 'number';
-      adet.min = '1';
-      adet.step = '1';
-      adet.placeholder = 'adet';
-      adet.value = kalem.adet === null ? '' : kalem.adet;
-      adet.disabled = kalem.maks;
-      adet.addEventListener('input', () => {
-        const n = sayiOku(adet);
-        kalem.adet = n !== null && n > 0 ? Math.floor(n) : null;
-        hesapla();
-      });
-      sat.appendChild(adet);
-
       // Sonsuz dugmesi - "sigdigi kadar"
       const sonsuz = document.createElement('button');
       sonsuz.type = 'button';
@@ -537,7 +597,7 @@
       sonsuz.textContent = '∞';
       sonsuz.title = kalem.maks
         ? 'Sığdığı kadar yerleştiriliyor — kapatmak için tıkla'
-        : 'Sığdığı kadar yerleştir';
+        : 'Sığdığı kadar yerleştir (QTY yerine)';
       sonsuz.addEventListener('click', () => {
         kalem.maks = !kalem.maks;
         kalemleriCiz();
@@ -557,6 +617,66 @@
         hesapla();
       });
       sat.appendChild(sil);
+
+      // ---- ikinci satir: QTY[TH] -> QTY ----
+      // Tek satira sigmiyor (sol panel 340 px), o yuzden alt satira aliniyor.
+      const sayilar = document.createElement('div');
+      sayilar.className = 'sayilar';
+
+      const etiketTh = document.createElement('label');
+      etiketTh.className = 'qty-etiket';
+      etiketTh.textContent = 'QTY[TH]';
+
+      const qtyTh = document.createElement('input');
+      qtyTh.type = 'number';
+      qtyTh.min = '0';
+      qtyTh.step = String(QTY_BOLEN); // ok tuslari 10'ar 10'ar gitsin
+      qtyTh.value = kalem.qtyTh === null || kalem.qtyTh === undefined ? '' : kalem.qtyTh;
+      qtyTh.disabled = kalem.maks;
+      etiketTh.appendChild(qtyTh);
+      sayilar.appendChild(etiketTh);
+
+      const etiketQty = document.createElement('label');
+      etiketQty.className = 'qty-etiket';
+      etiketQty.textContent = 'QTY';
+
+      // QTY yazilamaz - QTY[TH]'den hesaplanir. readonly (disabled degil) ki
+      // deger secilip kopyalanabilsin.
+      const qty = document.createElement('input');
+      qty.type = 'text';
+      qty.className = 'qty-cikti';
+      qty.readOnly = true;
+      qty.tabIndex = -1;
+      qty.title = 'QTY[TH] ÷ ' + QTY_BOLEN + ' — motora giden kutu adedi';
+      etiketQty.appendChild(qty);
+      sayilar.appendChild(etiketQty);
+
+      const uyari = document.createElement('div');
+      uyari.className = 'qty-uyari';
+
+      /** QTY ciktisini ve uyariyi kalemin guncel haline gore tazeler. */
+      const qtyYansit = () => {
+        const s = qtyHesapla(kalem.qtyTh);
+        kalem.adet = s.adet;
+        qty.value = kalem.maks
+          ? '∞'
+          : (s.adet === null ? '—' : sayiYaz(s.adet));
+        qty.classList.toggle('bos', kalem.maks || s.adet === null);
+        uyari.textContent = kalem.maks ? '' : s.hata;
+        gorunur(uyari, !kalem.maks && s.hata !== '');
+        qtyTh.classList.toggle('hatali', !kalem.maks && s.hata !== '');
+      };
+
+      qtyTh.addEventListener('input', () => {
+        const n = sayiOku(qtyTh);
+        kalem.qtyTh = n;
+        qtyYansit();
+        hesapla();
+      });
+
+      qtyYansit();
+      sat.appendChild(sayilar);
+      sat.appendChild(uyari);
 
       yer.appendChild(sat);
     });
@@ -635,12 +755,19 @@
       gorunur($('sonuc'), false);
       gorunur($('baslangic'), true);
       $('uyariYer').innerHTML = '';
+
+      // Uc ayri durum: arac yok / liste bos / listede kutu var ama QTY yok.
+      // Ucuncusu artik NORMAL bir durum: kutu eklemek tek basina hesap
+      // baslatmiyor, QTY[TH] girilmesi bekleniyor.
+      const listeDolu = D.kalemler.length > 0;
       $('baslangicBaslik').textContent = !arac
         ? 'Araç ölçülerini gir'
-        : 'Yük listesine kutu ekle';
+        : listeDolu ? 'QTY[TH] gir' : 'Yük listesine kutu ekle';
       $('baslangicMetin').textContent = !arac
         ? 'Sol panelden aracı oluştur, sonra kutu tanımlayıp yük listesine ekle. Hesap sen yazarken anında yapılır.'
-        : 'Aracın hazır. Şimdi bir kutu seçip Ekle’ye bas — sayılar anında görünecek.';
+        : listeDolu
+          ? 'Yük listesindeki kutunun QTY[TH] alanına bir sayı yaz — QTY (kutu adedi) 10’a bölünerek bulunur ve hesap anında yapılır. “Sığdığı kadar” istiyorsan ∞ düğmesine bas.'
+          : 'Aracın hazır. Şimdi bir kutu seçip Ekle’ye bas.';
       planKaydetDenetle(); // plan yoksa "kaydet" kapali kalmali
       return;
     }
@@ -1311,6 +1438,8 @@
       };
 
       hucre(k.grup || '—', k.grup ? '' : 'isaret');
+      hucre(k.material || '—', k.material ? '' : 'isaret');
+      hucre(k.format || '—', k.format ? '' : 'isaret');
       hucre(mmYaz(k.uzunluk) + '×' + mmYaz(k.genislik) + '×' + mmYaz(k.yukseklik));
       // maksIstif 0 = sinirsiz
       hucre(k.maksIstif ? String(k.maksIstif) : '∞', k.maksIstif ? '' : 'isaret');
@@ -1545,7 +1674,16 @@
     const eksikler = [];
     for (const k of p.kalemler || []) {
       if (D.kutular.some((x) => x.id === k.kutuId)) {
-        gelen.push({ kutuId: k.kutuId, adet: k.maks ? null : k.adet, maks: !!k.maks });
+        // Planda yalnizca `adet` saklanir (motorun bildigi tek sayi).
+        // QTY[TH] ondan geri uretiliyor - plan semasi degistirilmedi,
+        // eski kayitlar da sorunsuz aciliyor.
+        const adet = k.maks ? null : (k.adet || null);
+        gelen.push({
+          kutuId: k.kutuId,
+          qtyTh: adet === null ? null : adet * QTY_BOLEN,
+          adet,
+          maks: !!k.maks,
+        });
       } else {
         eksikler.push(k.kutuId);
       }

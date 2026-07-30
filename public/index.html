@@ -112,8 +112,10 @@
         <div id="kalemler" style="margin-top:14px"></div>
 
         <p class="bos-not" id="kalemBosNot">
-          Listeye kutu ekle. Adet yaz ya da <strong>∞</strong> ile
-          &ldquo;sığdığı kadar&rdquo; yerleştir.
+          Listeye kutu ekle, sonra <strong>QTY[TH]</strong> alanına sayı yaz —
+          <strong>QTY</strong> (kutu adedi) 10&rsquo;a bölünerek bulunur.
+          Sayı girilene kadar hesap yapılmaz; &ldquo;sığdığı kadar&rdquo; için
+          <strong>∞</strong> düğmesini kullan.
         </p>
       </div>
     </section>
@@ -390,6 +392,8 @@
           <tr>
             <th>Kutu</th>
             <th>Grup</th>
+            <th>Material</th>
+            <th>Format</th>
             <th>Ölçü — MM (milimetre)</th>
             <th>Kat</th>
             <th>Yatık</th>
@@ -523,6 +527,19 @@
       <span>Grup <em style="font-style:normal;opacity:0.65">(isteğe bağlı)</em></span>
       <input type="text" id="kutuGrup" maxlength="80" autocomplete="off">
     </label>
+
+    <div class="ikili">
+      <label class="sat">
+        <span>Material <em style="font-style:normal;opacity:0.65">(isteğe bağlı)</em></span>
+        <input type="text" id="kutuMaterial" maxlength="80" autocomplete="off">
+      </label>
+      <label class="sat">
+        <span>Format <em style="font-style:normal;opacity:0.65">(isteğe bağlı)</em></span>
+        <!-- Secenekler sunucudan gelir (dogrula.js FORMATLAR), burada
+             elle yazilmaz - iki liste ayrisamasin. -->
+        <select id="kutuFormat"></select>
+      </label>
+    </div>
 
     <div class="ikili">
       <label class="sat">

@@ -154,3 +154,53 @@ test('Kutu olculeri sinir disina tasarsa kirpilir, reddedilmez', () => {
   assert.ok(!sonuc.hata, sonuc.hata);
   assert.equal(sonuc.deger.uzunluk, ust);
 });
+
+// ============================================================================
+//  KUTU: MATERIAL + FORMAT  (30 Tem 2026)
+//
+//  Format SABIT LISTEDEN gelir; arayuzun acilir listesi de ayni diziden
+//  uretiliyor (panoVerisi -> formatlar). Burada kilitlenen sey: sunucu
+//  listede olmayan bir formati KABUL ETMEZ. Arayuze guvenip dogrudan
+//  kaydetseydik, elle istek atan biri veritabanina uydurma format yazardi.
+// ============================================================================
+
+test('Format listesi bekledigimiz uc degeri tutuyor', () => {
+  assert.deepEqual(dogrula.FORMATLAR,
+    ['KSRCSSLI_v2', 'KSDSPSSL_v2', 'KSBOSSTD_v2']);
+});
+
+test('Gecerli format oldugu gibi gecer', () => {
+  for (const f of dogrula.FORMATLAR) {
+    const s = dogrula.kutu({ ad: 'K', uzunluk: 100, genislik: 100, yukseklik: 100,
+      agirlik: 0, format: f });
+    assert.equal(s.deger.format, f);
+  }
+});
+
+test('Listede olmayan format BOSA dusurulur, kayit reddedilmez', () => {
+  // Bos birakmak gecerli bir secim - format zorunlu alan degil. O yuzden
+  // uydurma deger hata degil, sessizce bos oluyor.
+  for (const kotu of ['HACK', 'ksrcssli_v2', '', null, undefined, 123, {}]) {
+    const s = dogrula.kutu({ ad: 'K', uzunluk: 100, genislik: 100, yukseklik: 100,
+      agirlik: 0, format: kotu });
+    assert.ok(!s.hata, 'format yuzunden kayit reddedilmemeli');
+    assert.equal(s.deger.format, '', 'gecersiz format bos olmali: ' + String(kotu));
+  }
+});
+
+test('Material serbest metin ama temizlenip kisaltiliyor', () => {
+  const s = dogrula.kutu({ ad: 'K', uzunluk: 100, genislik: 100, yukseklik: 100,
+    agirlik: 0, material: '  KAGIT\tKARTON  ' });
+  assert.equal(s.deger.material, 'KAGIT KARTON', 'bosluklar tekillesir, kirpilir');
+
+  const uzun = dogrula.kutu({ ad: 'K', uzunluk: 100, genislik: 100, yukseklik: 100,
+    agirlik: 0, material: 'x'.repeat(500) });
+  assert.equal(uzun.deger.material.length, dogrula.SINIR.metinKisa);
+});
+
+test('Material/format verilmezse bos string olur, undefined degil', () => {
+  const s = dogrula.kutu({ ad: 'K', uzunluk: 100, genislik: 100, yukseklik: 100,
+    agirlik: 0 });
+  assert.equal(s.deger.material, '');
+  assert.equal(s.deger.format, '');
+});

@@ -482,7 +482,40 @@ const sunucu = http.createServer(async (istek, cevap) => {
 //  Baslat
 // ---------------------------------------------------------------------------
 
+/**
+ * Semayi her aciliste calistirir.
+ *
+ * NEDEN GEREKLI: Render'in baslatma komutu `npm start`, yani yalnizca bu
+ * dosya. `npm run db:kur` dagitimda HIC calismiyor. Semaya yeni bir kolon
+ * eklendiginde (30 Tem 2026: kutular.material / kutular.format) canli
+ * veritabani eski semada kalir ve ilk kayitta "column does not exist" ile
+ * 500 doner. Kullanicidan her seferinde elle komut calistirmasini beklemek
+ * yerine sunucu kendi semasini kendisi hizaliyor.
+ *
+ * GUVENLI: sema.sql'in tamami `create table if not exists` ve
+ * `alter table ... add column if not exists` - var olan veriye dokunmaz,
+ * tekrar tekrar calistirilabilir. Yonetici hesabi burada DEGIL kur.js'te
+ * olusturuluyor, yani sifre tarafina hic karismiyor.
+ */
+async function semayiHizala() {
+  const yol = path.join(__dirname, 'veritabani', 'sema.sql');
+  const sema = fs.readFileSync(yol, 'utf8');
+  const { sorgu } = require('./veritabani/baglanti');
+  await sorgu(sema);
+}
+
 async function baslat() {
+  // Sema once: eksik kolon varsa uygulama acilmadan tamamlansin
+  try {
+    await semayiHizala();
+  } catch (hata) {
+    // Semayi hizalayamadiysak devam etmenin anlami yok - yeni kolonu
+    // bekleyen kod ilk yazmada patlar, sebebi de anlasilmaz olur.
+    console.error('\nSEMA HIZALANAMADI:', hata.message);
+    console.error('  `npm run db:kur` ile elle deneyebilirsin.\n');
+    process.exit(1);
+  }
+
   // Yonetici hesabi var mi?
   let yonetici = null;
   try {

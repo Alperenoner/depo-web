@@ -306,12 +306,53 @@ button.tam { width: 100%; }
 /* -------------------------------------------------------------- yuk listesi */
 
 .kalem {
+  /* Ust satir: ad | ∞ | ✕     Alt satir: QTY[TH] ve QTY (tam genislik)
+     Sol panel 340 px; besi birden tek satira sigmiyordu. */
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 7px;
   padding: 7px 0;
   border-bottom: 1px solid var(--kenar);
+}
+
+.kalem .sayilar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kalem .qty-etiket {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--soluk);
+  white-space: nowrap;
+}
+
+/* QTY yazilamaz, QTY[TH]'den hesaplanir - girdi alanindan ayirt edilsin */
+.kalem input.qty-cikti {
+  width: 66px;
+  background: var(--yuzey2);
+  color: var(--yazi);
+  font-weight: 600;
+  cursor: default;
+}
+
+.kalem input.qty-cikti.bos { color: var(--soluk); font-weight: 400; }
+
+.kalem input.hatali {
+  border-color: var(--kirmizi);
+  color: var(--kirmizi);
+}
+
+.kalem .qty-uyari {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  color: var(--kirmizi);
 }
 
 .kalem:last-of-type { border-bottom: none; }

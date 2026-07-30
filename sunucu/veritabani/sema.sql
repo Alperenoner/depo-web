@@ -59,9 +59,18 @@ create table if not exists kutular (
   maks_istif    integer       not null default 0 check (maks_istif >= 0),
   icerik        text          not null default '',
   aciklama      text          not null default '',
+  material      text          not null default '',
+  format        text          not null default '',
   sira          integer       not null default 0,
   olusturuldu   timestamptz   not null default now()
 );
+
+-- material / format 30 Tem 2026'da eklendi. Yukaridaki "create table if not
+-- exists" ZATEN VAR OLAN tabloya dokunmaz, o yuzden kolonlar ayrica ekleniyor.
+-- Bu iki satir olmadan canli veritabani (Neon) eski semada kalirdi ve kayit
+-- "column does not exist" ile patlardi.
+alter table kutular add column if not exists material text not null default '';
+alter table kutular add column if not exists format   text not null default '';
 
 -- ---------------------------------------------------------------------------
 --  PLANLAR
