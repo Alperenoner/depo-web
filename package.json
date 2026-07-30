@@ -1,0 +1,20 @@
+{
+  "name": "depo-web",
+  "version": "0.1.0",
+  "description": "DEPOLAMA - Tir Yukleme Planlayici (web surumu)",
+  "private": true,
+  "type": "commonjs",
+  "main": "sunucu/server.js",
+  "scripts": {
+    "start": "node sunucu/server.js",
+    "test": "node --test testler/",
+    "db:kur": "node sunucu/veritabani/kur.js",
+    "db:dene": "node sunucu/veritabani/baglanti-testi.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

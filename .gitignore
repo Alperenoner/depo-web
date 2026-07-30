@@ -1,0 +1,15 @@
+# Gizli bilgiler - ASLA git'e girmez
+.env
+.env.*
+!.env.ornek
+
+# Bagimliliklar
+node_modules/
+
+# macOS
+.DS_Store
+._*
+
+# Gecici
+*.log
+*.tmp
