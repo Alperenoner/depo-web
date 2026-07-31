@@ -14,9 +14,14 @@ node_modules/
 *.log
 *.tmp
 
-# Obsidian - belgeler/ ayri bir vault. Notlar git'e girer,
-# makineye ozel arayuz durumu girmez.
-belgeler/.obsidian/workspace.json
-belgeler/.obsidian/workspace-mobile.json
-belgeler/.obsidian/graph.json
-belgeler/.trash/
+# Calisma notlari - depo herkese acik oldugu icin git'e GIRMEZ.
+# Ikisi de Obsidian kasasi, bilgisayarda duruyor:
+#   belgeler/   faz plani, mimari notlar, konusma gunlugu
+#   WEB SITE/   proje not agi
+# Projeyi anlatan sey README.md / README.tr.md.
+belgeler/
+WEB SITE/
+
+# Eski tek dosyalik rehber - icerigi eskidi (hazir Marlboro olculeri, 5 dizilis),
+# yerini README aldi. Diskte duruyor, git'e girmiyor.
+MAC-PROJE-REHBERI.md
