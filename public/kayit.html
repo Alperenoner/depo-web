@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Hesap Oluştur — DEPOLAMA</title>
+<link rel="stylesheet" href="/giris.css">
+</head>
+<body>
+
+<main class="kutu genis">
+  <div class="logo">📦</div>
+  <h1>HESAP OLUŞTUR</h1>
+  <p class="alt">Kayıt olmak için referans numarası gerekir</p>
+
+  <form id="form" autocomplete="on" novalidate>
+    <label for="adSoyad">Ad Soyad</label>
+    <input id="adSoyad" name="name" type="text"
+           autocomplete="name" required>
+
+    <label for="eposta">E-posta</label>
+    <input id="eposta" name="email" type="email"
+           autocomplete="email" autocapitalize="off" spellcheck="false" required>
+    <p class="ipucu">Siteye bu e-posta ile gireceksin.</p>
+
+    <label for="telefon">Telefon</label>
+    <input id="telefon" name="tel" type="tel"
+           autocomplete="tel" inputmode="tel" required>
+
+    <label for="sifre">Şifre</label>
+    <input id="sifre" name="new-password" type="password"
+           autocomplete="new-password" required>
+    <p class="ipucu">En az 8 karakter.</p>
+
+    <label for="sifreTekrar">Şifre (tekrar)</label>
+    <input id="sifreTekrar" name="new-password-2" type="password"
+           autocomplete="new-password" required>
+
+    <label for="davetKodu">Referans Numarası</label>
+    <input id="davetKodu" class="kod" type="text"
+           placeholder="DEPO-XXXX-XXXX"
+           autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+    <p class="ipucu">Sana verilen numarayı olduğu gibi yaz.</p>
+
+    <button id="dugme" type="submit">Hesabı Oluştur</button>
+  </form>
+
+  <p id="uyari" class="uyari" hidden role="alert"></p>
+
+  <p class="gecis">Hesabın var mı? <a href="/giris">Giriş yap</a></p>
+</main>
+
+<script src="/kayit.js"></script>
+</body>
+</html>

@@ -29,6 +29,13 @@ const SINIR = {
   metinKisa: 80, // ad, grup, kullanici
   metinUzun: 500, // icerik, aciklama
 
+  // Kayit formu
+  epostaAzami: 120,
+  telefonBasamak: [10, 15], // ulke kodu dahil/haric
+  // Kayit siteye ACIK oldugu icin sifre alt siniri burada daha yuksek.
+  // sifreDegistir hala 6 kabul ediyor: var olan hesaplar kilitlenmesin.
+  sifreEnAz: 8,
+
   katalogAzami: 300, // en fazla kac kutu cesidi
   planAzami: 200, // en fazla kac kayitli plan
   kalemAzami: 60, // bir planda en fazla kac kalem
@@ -292,8 +299,103 @@ function sifreDegistir(gelen) {
   return { deger: { eski, yeni, kullanici } };
 }
 
+// --- Kayit olma ------------------------------------------------------------
+
+// Davet (referans) kodunun alfabesi. TEK KAYNAK burasi: kodu ureten
+// guvenlik.js de bu diziyi kullanir.
+//
+// Karistirilan karakterler YOK: 0/O ve 1/I. Kod telefonda okunup elle
+// yazilacak, "sifir mi O mu" diye sorulmasin. Tam 32 karakter olmasi
+// onemli - bkz. guvenlik.davetKoduUret.
+//
+// Not: bu dosya veritabanina DOKUNMAZ (testler onu bunun icin dogrudan
+// yukleyebiliyor), o yuzden alfabe guvenlik.js'ten buraya alindi.
+const DAVET_ALFABE = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const DAVET_GOVDE_UZUNLUK = 8;
+const DAVET_ON_EK = 'DEPO';
+
+/**
+ * Kullanicinin yazdigi referans numarasini standart bicime getirir.
+ * "depo 7k4m 92xq", "7K4M92XQ", "DEPO-7K4M-92XQ" -> "DEPO-7K4M-92XQ"
+ * Cizgi, bosluk ve kucuk harf serbest; tanimadigimiz karakter varsa null.
+ */
+function davetKodu(deger) {
+  const ham = String(deger ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+
+  // 12 karakter = on ekiyle birlikte yazilmis, 8 = yalnizca govde
+  let govde = ham;
+  if (ham.length === DAVET_ON_EK.length + DAVET_GOVDE_UZUNLUK) {
+    if (!ham.startsWith(DAVET_ON_EK)) return null;
+    govde = ham.slice(DAVET_ON_EK.length);
+  }
+  if (govde.length !== DAVET_GOVDE_UZUNLUK) return null;
+
+  for (const harf of govde) {
+    if (!DAVET_ALFABE.includes(harf)) return null;
+  }
+
+  return DAVET_ON_EK + '-' + govde.slice(0, 4) + '-' + govde.slice(4);
+}
+
+const EPOSTA_KALIBI = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+
+/** E-postayi kucuk harfe indirir. Bicim tutmuyorsa null. */
+function eposta(deger) {
+  const m = metin(deger, SINIR.epostaAzami).toLowerCase();
+  return EPOSTA_KALIBI.test(m) ? m : null;
+}
+
+/**
+ * Telefonu rakamlara indirir, basindaki + korunur.
+ * "0532 111 22 33" -> "05321112233".  Gecersizse null.
+ */
+function telefon(deger) {
+  const m = metin(deger, 40);
+  const artiVar = m.trim().startsWith('+');
+  const rakamlar = m.replace(/\D/g, '');
+  const [alt, ust] = SINIR.telefonBasamak;
+  if (rakamlar.length < alt || rakamlar.length > ust) return null;
+  return (artiVar ? '+' : '') + rakamlar;
+}
+
+/**
+ * Kayit formu. Butun alanlar zorunlu.
+ * Hata mesajlari KULLANICIYA gosterilecek - anlasilir olsunlar.
+ */
+function kayit(gelen) {
+  const g = gelen || {};
+
+  const adSoyad = metin(g.adSoyad, SINIR.metinKisa);
+  if (adSoyad.length < 3 || !adSoyad.includes(' ')) {
+    return { hata: 'Ad ve soyadını birlikte yaz.' };
+  }
+
+  const ePosta = eposta(g.eposta);
+  if (!ePosta) return { hata: 'Geçerli bir e-posta adresi yaz.' };
+
+  const tel = telefon(g.telefon);
+  if (!tel) return { hata: 'Geçerli bir telefon numarası yaz.' };
+
+  const sifre = String(g.sifre ?? '');
+  const sifreTekrar = String(g.sifreTekrar ?? '');
+  if (sifre.length < SINIR.sifreEnAz) {
+    return { hata: 'Şifre en az ' + SINIR.sifreEnAz + ' karakter olmalı.' };
+  }
+  if (sifre !== sifreTekrar) return { hata: 'Şifreler birbirini tutmuyor.' };
+
+  const kod = davetKodu(g.davetKodu);
+  if (!kod) return { hata: 'Referans numarası geçersiz.' };
+
+  return { deger: { adSoyad, eposta: ePosta, telefon: tel, sifre, davetKodu: kod } };
+}
+
 module.exports = {
   SINIR,
+  DAVET_ALFABE,
+  DAVET_ON_EK,
+  DAVET_GOVDE_UZUNLUK,
   VARSAYILAN_RENK,
   STRATEJI_IDLERI,
   VARSAYILAN_STRATEJI,
@@ -311,4 +413,8 @@ module.exports = {
   plan,
   ayarlar,
   sifreDegistir,
+  davetKodu,
+  eposta,
+  telefon,
+  kayit,
 };

@@ -19,6 +19,10 @@
   <div class="bosluk"></div>
   <button class="ikincil ufak" id="katalogAc">📦 Katalog</button>
   <button class="ikincil ufak" id="planlarAc">💾 Planlar</button>
+  <!-- Davet kodu uretmek yalnizca KURUCUNUN isi. Dugme baslangicta gizli;
+       /api/veri "ben.kurucu" derse uygulama.js aciyor. Gizlemek sadece
+       gorunustur - asil kontrol sunucuda (/api/davet* 403 doner). -->
+  <button class="ikincil ufak" id="davetAc" hidden>🎫 Davet Kodları</button>
   <button class="ikincil ufak" id="sifreAc">🔑 Şifre</button>
   <button class="ikincil ufak" id="cikis">Çıkış</button>
 </header>
@@ -461,6 +465,56 @@
 
     <div class="dugmeler">
       <button class="ikincil" id="planKapat">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================== davet penceresi ==== -->
+<!-- Siteye kayit olmak DAVET (referans) NUMARASI ister. Numarayi buradan
+     kurucu uretir ve kaydolacak kisiye kendisi verir. Her numara TEK
+     KULLANIMLIK ve surelidir. -->
+<div class="perde ust" id="davetPerde" hidden>
+  <div class="pencere genis">
+    <h3>🎫 Davet Kodları</h3>
+    <p class="ipucu">
+      Siteye kayıt olabilmek için referans numarası gerekir. Numarayı üret,
+      kaydolacak kişiye ver. Her numara <strong>bir kez</strong> kullanılır ve
+      <span id="davetGun">14</span> gün sonra geçersiz olur.
+    </p>
+
+    <div class="plan-kaydet">
+      <div class="satir">
+        <label class="sat">
+          <span>Kimin için? <em style="font-style:normal;opacity:0.65">(sadece senin hatırlaman için)</em></span>
+          <input type="text" id="davetEtiket" maxlength="80" autocomplete="off"
+                 placeholder="örn. Ahmet Bey / X Lojistik">
+        </label>
+      </div>
+      <button class="tam" id="davetUret">Yeni numara üret</button>
+      <p class="hata-not" id="davetHata"></p>
+    </div>
+
+    <p class="bos-not" id="davetBosNot" hidden>
+      Henüz numara üretilmedi. Yukarıdaki düğmeyle ilkini oluşturabilirsin.
+    </p>
+
+    <div class="tablo-sarmal" id="davetTabloYer">
+      <table class="bloklar">
+        <thead>
+          <tr>
+            <th>Referans Numarası</th>
+            <th>Kimin için</th>
+            <th>Durum</th>
+            <th>Üretildi</th>
+            <th class="eylem"></th>
+          </tr>
+        </thead>
+        <tbody id="davetGovde"></tbody>
+      </table>
+    </div>
+
+    <div class="dugmeler">
+      <button class="ikincil" id="davetKapat">Kapat</button>
     </div>
   </div>
 </div>

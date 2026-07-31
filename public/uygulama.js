@@ -22,6 +22,9 @@
   // ------------------------------------------------------------------ durum
 
   const D = {
+    // Giris yapan kisi: {kullanici, ad, kurucu}. Her hesabin kendi verisi
+    // var; kurucu ayrica davet kodu uretebiliyor.
+    ben: null,
     ayarlar: {},
     aracAktif: null,
     araclar: [],
@@ -159,6 +162,7 @@
     if (!cevap.ok) throw new Error('Veri okunamadı.');
 
     const v = await cevap.json();
+    D.ben = v.ben || null;
     D.ayarlar = v.ayarlar || {};
     D.aracAktif = v.aracAktif || null;
     D.araclar = v.araclar || [];
@@ -167,6 +171,10 @@
     D.planlar = v.planlar || [];
     D.sinirlar = v.sinirlar || {};
     D.formatlar = v.formatlar || [];
+
+    // Davet kodu uretme dugmesi yalnizca kurucuda gorunur. Gizlemek bir
+    // GUVENLIK onlemi degil, duzen: uclar sunucuda da kontrol ediliyor.
+    gorunur($('davetAc'), Boolean(D.ben && D.ben.kurucu));
 
     $('baslik').textContent = D.ayarlar.baslik || 'DEPOLAMA';
     $('altBaslik').textContent = D.ayarlar.altBaslik || '';
@@ -1103,6 +1111,151 @@
     }
   }
 
+  // ===========================================================================
+  //  DAVET (REFERANS) KODLARI
+  //
+  //  Siteye kayit olmak referans numarasi ister; numarayi yalnizca KURUCU
+  //  uretir. Bu pencere de yalnizca kurucuda acilir - ama bu sadece gorunus:
+  //  uclar sunucuda da kurucu kontrolu yapiyor (403).
+  //
+  //  Liste /api/veri ile GELMEZ, pencere acilinca ayrica cekilir: kodlar
+  //  uygulamanin geri kalanini ilgilendirmiyor, her acilista tasinmasinlar.
+  // ===========================================================================
+
+  async function davetleriAc() {
+    gorunur($('davetPerde'), true);
+    $('davetHata').textContent = '';
+    $('davetEtiket').value = '';
+    await davetleriYukle();
+    $('davetEtiket').focus();
+  }
+
+  async function davetleriYukle() {
+    try {
+      const c = await fetch('/api/davetler');
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'Kodlar okunamadı.');
+      $('davetGun').textContent = String(cevap.gecerlilikGun || 14);
+      davetleriCiz(cevap.davetler || []);
+    } catch (h) {
+      $('davetHata').textContent = h.message;
+      davetleriCiz([]);
+    }
+  }
+
+  function davetleriCiz(liste) {
+    const govde = $('davetGovde');
+    govde.innerHTML = '';
+
+    const varMi = liste.length > 0;
+    gorunur($('davetBosNot'), !varMi);
+    gorunur($('davetTabloYer'), varMi);
+    if (!varMi) return;
+
+    const simdi = Date.now();
+
+    for (const d of liste) {
+      const tr = document.createElement('tr');
+
+      const hucre = (metinDeger, sinifAd) => {
+        const td = document.createElement('td');
+        td.textContent = metinDeger;
+        if (sinifAd) td.className = sinifAd;
+        tr.appendChild(td);
+        return td;
+      };
+
+      const kodHucre = hucre(d.kod);
+      kodHucre.style.fontFamily = 'ui-monospace, Menlo, Consolas, monospace';
+      kodHucre.style.letterSpacing = '0.06em';
+
+      hucre(d.etiket || '—', d.etiket ? '' : 'isaret');
+
+      // Uc durum var ve ucu de kullaniciya farkli sey soyluyor:
+      //   kullanildi -> kim kullandi
+      //   suresi gecti -> yenisini uret
+      //   bekliyor -> hala verilebilir
+      const gecti = new Date(d.sonKullanma).getTime() < simdi;
+      let durum;
+      if (d.kullanildi) durum = 'Kullanıldı — ' + d.kullanan;
+      else if (gecti) durum = 'Süresi doldu';
+      else durum = 'Bekliyor';
+      hucre(durum, d.kullanildi || gecti ? 'isaret' : '');
+
+      hucre(tarihYaz(d.olusturuldu), 'isaret');
+
+      const eylem = document.createElement('td');
+      eylem.className = 'eylem';
+
+      // Kopyalamak yalnizca HALA VERILEBILIR kodda anlamli: kullanilmis ya
+      // da suresi gecmis numarayi kopyalatmak karsi tarafi bosuna ugrastirir.
+      if (!d.kullanildi && !gecti) {
+        const kopyala = document.createElement('button');
+        kopyala.className = 'ufak';
+        kopyala.textContent = 'Kopyala';
+        kopyala.addEventListener('click', () => kodKopyala(d.kod, kopyala));
+        eylem.appendChild(kopyala);
+      }
+
+      // Kullanilmis kod SILINMEZ: kimin hangi kodla girdigi kayitli kalsin.
+      // Suresi gecmis kod silinebilir - listeyi temiz tutmaya yariyor.
+      if (!d.kullanildi) {
+        const sil = document.createElement('button');
+        sil.className = 'ikincil ufak tehlike';
+        sil.textContent = 'İptal';
+        sil.addEventListener('click', () => davetSilDugmesi(d));
+        eylem.appendChild(sil);
+      }
+
+      tr.appendChild(eylem);
+      govde.appendChild(tr);
+    }
+  }
+
+  async function kodKopyala(kod, dugme) {
+    const eskiMetin = dugme.textContent;
+    try {
+      await navigator.clipboard.writeText(kod);
+      dugme.textContent = 'Kopyalandı';
+    } catch (h) {
+      // Pano izni yoksa (bazi tarayicilar http'de vermiyor) kullanici
+      // numarayi ekrandan okuyup yazabilsin - hata gostermeye gerek yok.
+      dugme.textContent = 'Elle kopyala';
+    }
+    setTimeout(() => { dugme.textContent = eskiMetin; }, 2000);
+  }
+
+  async function davetUretDugmesi() {
+    $('davetUret').disabled = true;
+    $('davetHata').textContent = '';
+    try {
+      const c = await fetch('/api/davet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ etiket: $('davetEtiket').value.trim() }),
+      });
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'Numara üretilemedi.');
+
+      $('davetEtiket').value = '';
+      await davetleriYukle();
+      uyariGoster('Referans numarası hazır: ' + cevap.davet.kod, 'iyi');
+    } catch (h) {
+      $('davetHata').textContent = h.message;
+    }
+    $('davetUret').disabled = false;
+  }
+
+  async function davetSilDugmesi(d) {
+    const kim = d.etiket ? ' (' + d.etiket + ')' : '';
+    if (!window.confirm(d.kod + kim + ' iptal edilsin mi?')) return;
+    const c = await fetch('/api/davet/' + encodeURIComponent(d.kod), {
+      method: 'DELETE',
+    });
+    if (c.ok) await davetleriYukle();
+    else $('davetHata').textContent = 'Numara iptal edilemedi.';
+  }
+
   /** Ana alanin ustunde kisa bir bildirim. */
   function uyariGoster(metin, tur) {
     const yer = $('uyariYer');
@@ -1907,13 +2060,18 @@
     $('planKaydet').addEventListener('click', planKaydetDugmesi);
     $('planAd').addEventListener('input', planKaydetDenetle);
 
+    // -- davet kodlari penceresi (yalnizca kurucu) --
+    $('davetAc').addEventListener('click', davetleriAc);
+    $('davetKapat').addEventListener('click', () => gorunur($('davetPerde'), false));
+    $('davetUret').addEventListener('click', davetUretDugmesi);
+
     // -- pencereler: Esc kapatir, perdeye tiklamak kapatir --
     //
     // Esc en ustteki pencereyi kapatir: form pencereleri liste pencerelerinin
     // ustunde duruyor (.perde.ust), o yuzden once onlara bakilir. Yoksa
     // katalogdan kutu formu acipEsc'e basinca ikisi birden kapaniyor.
     const FORM_PERDELERI = ['aracPerde', 'kutuPerde', 'sifrePerde'];
-    const LISTE_PERDELERI = ['katalogPerde', 'planPerde'];
+    const LISTE_PERDELERI = ['katalogPerde', 'planPerde', 'davetPerde'];
 
     document.addEventListener('keydown', (o) => {
       if (o.key !== 'Escape') return;

@@ -23,6 +23,10 @@ const CEREZ_ADI = 'depo_oturum';
 const AZAMI_HATA = 8;
 const KILIT_SURESI_MS = 10 * 60 * 1000; // 10 dakika
 
+// Davet (referans) kodu
+const DAVET_GECERLILIK_GUN = 14;
+const KAYIT_SAATLIK_AZAMI = 3; // ayni IP'den saatte en fazla 3 hesap
+
 // --- Sifre ozeti -----------------------------------------------------------
 
 function scryptSozu(sifre, tuz) {
@@ -84,6 +88,50 @@ function hatalariTemizle(ip) {
   hatalar.delete(ip);
 }
 
+// --- Kayit sikligi (bellekte) ----------------------------------------------
+//  Gecerli bir davet kodu ele gecse bile ayni yerden seri hesap acilmasin.
+//  Kaba kuvvet sayacindan AYRI tutuluyor: biri hatali denemeyi, digeri
+//  BASARILI kaydi sayiyor.
+
+const kayitlar = new Map(); // ip -> {sayi, pencereBitis}
+
+/** Bu IP bir hesap daha acabilir mi? */
+function kayitHakkiVarMi(ip) {
+  const kayit = kayitlar.get(ip);
+  if (!kayit || Date.now() > kayit.pencereBitis) return true;
+  return kayit.sayi < KAYIT_SAATLIK_AZAMI;
+}
+
+function kayitSay(ip) {
+  const kayit = kayitlar.get(ip);
+  if (!kayit || Date.now() > kayit.pencereBitis) {
+    kayitlar.set(ip, { sayi: 1, pencereBitis: Date.now() + 60 * 60 * 1000 });
+    return;
+  }
+  kayit.sayi += 1;
+}
+
+// --- Davet (referans) kodu -------------------------------------------------
+
+// Alfabe dogrula.js'te (tek kaynak; kodu ureten de okuyan da ayni diziyi
+// kullansin). Uzunlugu TAM 32 olmali: 256 % 32 == 0 oldugu icin `bayt % 32`
+// her karakteri ESIT olasilikla secer. 32'den farkli bir uzunlukta bazi
+// karakterler digerlerinden sik cikar ve kod tahmin edilebilirlesir.
+const { DAVET_ALFABE, DAVET_ON_EK, DAVET_GOVDE_UZUNLUK } = require('./dogrula');
+
+/** Ornek: DEPO-7K4M-92XQ  (8 karakter x 32 secenek = 40 bit) */
+function davetKoduUret() {
+  const bayt = crypto.randomBytes(DAVET_GOVDE_UZUNLUK);
+  let harfler = '';
+  for (const b of bayt) harfler += DAVET_ALFABE[b % DAVET_ALFABE.length];
+  return DAVET_ON_EK + '-' + harfler.slice(0, 4) + '-' + harfler.slice(4);
+}
+
+/** Kodun son kullanma tarihi (uretim ani + DAVET_GECERLILIK_GUN). */
+function davetSonKullanma() {
+  return new Date(Date.now() + DAVET_GECERLILIK_GUN * 24 * 60 * 60 * 1000);
+}
+
 // --- Oturum ----------------------------------------------------------------
 
 async function oturumAc(ip, kullaniciId) {
@@ -102,7 +150,7 @@ async function oturumAc(ip, kullaniciId) {
  * bilgisi gerekli oldu (sifre degistirme kendi hesabini degistirmeli).
  * Cagiran taraf `!== null` diye bakiyor.
  *
- * @returns {Promise<{kullaniciId: number|null}|null>}
+ * @returns {Promise<{kullaniciId: number}|null>}
  */
 async function oturumGecerliMi(jeton) {
   if (!jeton) return null;
@@ -122,9 +170,16 @@ async function oturumGecerliMi(jeton) {
   await sorgu('update oturumlar set son_gorulme = now() where jeton = $1', [jeton]);
 
   // kullanici_id null olabilir: cok kullanici gelmeden ONCE acilmis oturumlar.
-  // Bunlar gecerli sayilir (kullanici disari atilmasin) ama sifre degistirmek
-  // isterlerse yeniden giris istenir - hangi hesap olduklarini bilmiyoruz.
-  return { kullaniciId: rows[0].kullanici_id ?? null };
+  //
+  // 31 Tem 2026'ya kadar bunlar gecerli sayiliyordu (kimse disari atilmasin
+  // diye). Artik HER KAYIT bir hesaba ait: sahibi belirsiz bir oturuma hangi
+  // veriyi gosterecegimizi bilemeyiz. Oturum kapatilir, yeniden giris istenir.
+  if (rows[0].kullanici_id == null) {
+    await oturumKapat(jeton);
+    return null;
+  }
+
+  return { kullaniciId: rows[0].kullanici_id };
 }
 
 async function oturumKapat(jeton) {
@@ -179,11 +234,17 @@ module.exports = {
   CEREZ_ADI,
   AZAMI_HATA,
   OTURUM_SURESI_MS,
+  DAVET_GECERLILIK_GUN,
+  KAYIT_SAATLIK_AZAMI,
   sifreOzetle,
   sifreDogru,
   kilitliMi,
   hataEkle,
   hatalariTemizle,
+  kayitHakkiVarMi,
+  kayitSay,
+  davetKoduUret,
+  davetSonKullanma,
   oturumAc,
   oturumGecerliMi,
   oturumKapat,

@@ -42,9 +42,14 @@ async function liste() {
   }
   console.log('Kayitli hesaplar (' + hesaplar.length + '):');
   for (const h of hesaplar) {
-    console.log('  id=' + String(h.id).padEnd(4) + h.kullanici);
+    console.log(
+      '  id=' + String(h.id).padEnd(4) +
+      h.kullanici.padEnd(32) +
+      (h.kurucu ? 'KURUCU' : '')
+    );
   }
-  console.log('\nHepsi AYNI YETKIYE sahip - rol/izin ayrimi yok.');
+  console.log('\nHer hesabin KENDI verisi var (arac, kutu, plan ayri).');
+  console.log('Tek yetki farki: davet kodunu yalnizca KURUCU uretebilir.');
 }
 
 async function ekle(kullanici, sifre) {
@@ -111,8 +116,22 @@ async function sil(kullanici) {
     return;
   }
 
+  // 31 Tem 2026'dan beri her hesabin KENDI verisi var ve veritabani kisiti
+  // (on delete cascade) hesapla birlikte araclarini, kutularini, planlarini
+  // ve yedeklerini de siler. Geri donusu yok.
+  const { rows } = await havuz.query(
+    `select (select count(*) from araclar where kullanici_id = $1)::int arac,
+            (select count(*) from kutular where kullanici_id = $1)::int kutu,
+            (select count(*) from planlar where kullanici_id = $1)::int plan`,
+    [hesap.id]
+  );
+  const v = rows[0];
+
   await veri.yoneticiSil(hesap.id);
   console.log('Hesap silindi: ' + hesap.kullanici);
+  console.log(
+    '  Verisi de silindi: ' + v.arac + ' arac, ' + v.kutu + ' kutu, ' + v.plan + ' plan.'
+  );
 }
 
 async function calistir() {

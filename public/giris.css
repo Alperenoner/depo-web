@@ -115,3 +115,43 @@ button:disabled {
   font-size: 13px;
   text-align: left;
 }
+
+/* --------------------------------------------------------------------------
+   Kayit sayfasi (kayit.html) da bu dosyayi kullanir - iki sayfa ayni
+   gorunsun ve giris arkasindaki stil.css'e bagimlilik olmasin.
+   -------------------------------------------------------------------------- */
+
+/* Kayit formu girise gore uzun: kutu biraz genisliyor */
+.kutu.genis { max-width: 420px; }
+
+/* Alan altindaki aciklama ("Sana verilen numara") */
+.ipucu {
+  margin: -13px 0 18px;
+  color: var(--soluk);
+  font-size: 12px;
+}
+
+/* Referans numarasi alani: kod BUYUK harf ve aralikli okunur */
+input.kod {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 17px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Sayfalar arasi gecis baglantisi */
+.gecis {
+  margin: 22px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--kenar);
+  color: var(--soluk);
+  font-size: 13px;
+}
+
+.gecis a {
+  color: var(--vurgu);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.gecis a:hover { text-decoration: underline; }

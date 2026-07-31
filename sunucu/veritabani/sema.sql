@@ -8,7 +8,9 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
---  Genel ayarlar - tek satir (id her zaman 1)
+--  Genel ayarlar
+--  Basta tek satirdi (id her zaman 1). 31 Tem 2026'dan beri HER HESABIN
+--  kendi satiri var - bkz. dosyanin sonundaki "HER HESABIN KENDI VERISI".
 -- ---------------------------------------------------------------------------
 create table if not exists ayarlar (
   id          smallint    primary key default 1 check (id = 1),
@@ -37,9 +39,9 @@ create table if not exists araclar (
   olusturuldu  timestamptz not null default now()
 );
 
--- Ayni anda sadece TEK arac aktif olabilir
-create unique index if not exists araclar_tek_aktif
-  on araclar (aktif) where aktif;
+-- Ayni anda sadece TEK arac aktif olabilir. Bu indeks dosyanin sonundaki
+-- "HER HESABIN KENDI VERISI" bolumunde kuruluyor: kisit artik butun site
+-- icin degil HESAP BASINA gecerli (herkesin kendi aktif araci var).
 
 -- ---------------------------------------------------------------------------
 --  KUTULAR (katalog)
@@ -163,3 +165,138 @@ create table if not exists yedekler (
 );
 
 create index if not exists yedekler_tarih on yedekler (tarih desc);
+
+-- ===========================================================================
+--  HER HESABIN KENDI VERISI          (31 Tem 2026)
+--
+--  O gune kadar veri ORTAKTI: giris yapan herkes ayni araclari, kutulari ve
+--  planlari goruyordu. Iki kisiydik, sorun degildi. Davet koduyla disaridan
+--  kayit acilinca ortak veri kabul edilemez hale geldi - kayit olan yabanci
+--  butun katalogu gorur ve silebilirdi.
+--
+--  Artik her satir BIR hesaba ait. Asagisi var olan canli veritabanini bu
+--  duzene tasir; `create table if not exists` var olan tabloya dokunmadigi
+--  icin bu bolum sart.
+--
+--  GOC: kolon `default 1` ile eklenir, yani o ana kadarki BUTUN VERI id=1
+--  olan hesaba (kurucu) gecer. Sonra default DUSURULUR: bundan sonra her
+--  insert sahibini acikca yazmak zorunda. Boyle olmazsa kullaniciyi
+--  gecirmeyi unutan bir hata sessizce kurucunun verisine yazardi.
+-- ===========================================================================
+
+alter table araclar add column if not exists kullanici_id smallint not null default 1;
+alter table kutular add column if not exists kullanici_id smallint not null default 1;
+alter table planlar add column if not exists kullanici_id smallint not null default 1;
+alter table yedekler add column if not exists kullanici_id smallint not null default 1;
+
+alter table araclar alter column kullanici_id drop default;
+alter table kutular alter column kullanici_id drop default;
+alter table planlar alter column kullanici_id drop default;
+alter table yedekler alter column kullanici_id drop default;
+
+create index if not exists araclar_kullanici on araclar (kullanici_id);
+create index if not exists kutular_kullanici on kutular (kullanici_id);
+create index if not exists planlar_kullanici on planlar (kullanici_id, tarih desc);
+create index if not exists yedekler_kullanici on yedekler (kullanici_id, tarih desc);
+
+-- ayarlar: tek satirlik tablodan hesap basina satira.
+-- id'nin `check (id = 1)` kisiti kalkiyor ve yonetici tablosunda yaptigimiz
+-- gibi id bir diziden veriliyor. Asil anahtar artik kullanici_id.
+alter table ayarlar add column if not exists kullanici_id smallint;
+update ayarlar set kullanici_id = 1 where kullanici_id is null;
+alter table ayarlar drop constraint if exists ayarlar_id_check;
+
+create sequence if not exists ayarlar_id_seq as smallint owned by ayarlar.id;
+alter table ayarlar alter column id set default nextval('ayarlar_id_seq');
+select setval('ayarlar_id_seq',
+              coalesce((select max(id) from ayarlar), 0) + 1,
+              false);
+
+create unique index if not exists ayarlar_kullanici on ayarlar (kullanici_id);
+
+-- Aktif arac kisiti artik HESAP BASINA. Eski indeks butun tabloda tek aktif
+-- araca izin veriyordu: iki kisi ayni anda plan yapamazdi, biri arac secince
+-- digerininki pasife duserdi.
+drop index if exists araclar_tek_aktif;
+create unique index if not exists araclar_tek_aktif_kullanici
+  on araclar (kullanici_id) where aktif;
+
+-- Hesap silinince verisi de gitsin.
+--
+-- SADECE TEMIZLIK DEGIL, GUVENLIK: yonetici id'si bir diziden geliyor ve
+-- dizi her aciliste `max(id) + 1`'e cekiliyor. Son hesap silinirse ayni id
+-- bir sonraki kayitta TEKRAR verilir - artik kaydi silinen kisinin verisi
+-- yeni ve alakasiz bir hesaba acilirdi. Cascade bu ihtimali kokten kaldirir.
+--
+-- Once sahipsiz oturumlari at, yoksa asagidaki kisit kurulamaz.
+-- kullanici_id'si NULL olan oturumlar cok kullanici gelmeden ONCE acilmisti;
+-- veri artik hesaba bagli oldugu icin "kim oldugu belirsiz" oturum
+-- calistirilamaz - sahipleri yeniden giris yapar.
+delete from oturumlar
+ where kullanici_id is null
+    or kullanici_id not in (select id from yonetici);
+
+-- Postgres'te `add constraint if not exists` yok, o yuzden dongu.
+do $$
+declare t text;
+begin
+  foreach t in array array['araclar','kutular','planlar','yedekler','ayarlar','oturumlar']
+  loop
+    if not exists (select 1 from pg_constraint where conname = t || '_kullanici_fk') then
+      execute format(
+        'alter table %I add constraint %I foreign key (kullanici_id)
+           references yonetici (id) on delete cascade', t, t || '_kullanici_fk');
+    end if;
+  end loop;
+end $$;
+
+-- ===========================================================================
+--  KAYIT OLMA + DAVET (REFERANS) KODU          (31 Tem 2026)
+--
+--  O gune kadar hesaplari yalnizca ben terminalden aciyordum
+--  (`npm run db:kullanici -- ekle`). Artik kullanici siteden kendisi kayit
+--  oluyor - ama herkese acik degil: elinde GECERLI BIR REFERANS NUMARASI
+--  olmasi lazim ve o numarayi yalnizca kurucu uretip veriyor.
+-- ===========================================================================
+
+-- Kurucu = davet kodu uretebilen hesap. Rol sistemi bundan ibaret; kayit
+-- olan kullanicilar kendi verilerinin sahibidir ama kod uretemez.
+alter table yonetici add column if not exists kurucu boolean not null default false;
+
+-- Kayit formundan gelen iletisim bilgileri.
+--   ad         -> ad soyad (kolon zaten vardi, bos duruyordu; artik dolduruluyor)
+--   kullanici  -> kayitta E-POSTANIN AYNISI yazilir (giris e-posta ile)
+alter table yonetici add column if not exists telefon    text not null default '';
+alter table yonetici add column if not exists eposta     text not null default '';
+alter table yonetici add column if not exists davet_kodu text;
+
+-- Ayni e-posta iki hesapta olmasin. Kismi indeks: terminalden acilmis eski
+-- hesaplarin e-postasi bos ('') ve bos degerler birbiriyle catismamali.
+create unique index if not exists yonetici_eposta_benzersiz
+  on yonetici (lower(eposta)) where eposta <> '';
+
+-- Var olan veritabaninda kurucuyu isaretle: en dusuk id'li hesap (benim).
+-- `not exists` sarti yuzunden yalnizca BIR KEZ calisir - kurucu sonradan
+-- elle degistirilirse sunucu her aciliste geri almaz.
+update yonetici set kurucu = true
+ where id = (select min(id) from yonetici)
+   and not exists (select 1 from yonetici where kurucu);
+
+-- ---------------------------------------------------------------------------
+--  DAVETLER (referans numaralari)
+--
+--  Kod TEK KULLANIMLIK ve SURELI. Duz metin duruyor (sifreler gibi
+--  ozetlenmiyor): kurucu uretilmis kodu listeden tekrar okuyup verebilsin.
+--  Riski dusuk - kodun tek yetkisi bos bir hesap acmak, bir kez.
+-- ---------------------------------------------------------------------------
+create table if not exists davetler (
+  kod          text        primary key,
+  etiket       text        not null default '',   -- "Ahmet Bey / X Lojistik"
+  olusturan_id smallint    references yonetici (id) on delete set null,
+  olusturuldu  timestamptz not null default now(),
+  son_kullanma timestamptz not null,
+  kullanildi   timestamptz,                        -- doluysa kod harcanmis
+  kullanan_id  smallint    references yonetici (id) on delete set null
+);
+
+create index if not exists davetler_olusturuldu on davetler (olusturuldu desc);

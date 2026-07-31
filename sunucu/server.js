@@ -45,8 +45,14 @@ const ACIK_YOLLAR = new Set([
   '/giris.html',
   '/giris.css',
   '/giris.js',
+  // Kayit sayfasi da acik olmak ZORUNDA: hesabi olmayan kisi buraya
+  // gelecek. Kapiyi tutan sey giris degil, DAVET KODU.
+  '/kayit',
+  '/kayit.html',
+  '/kayit.js',
   '/api/durum',
   '/api/giris',
+  '/api/kayit',
   '/api/cikis',
 ]);
 
@@ -272,6 +278,80 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     });
   }
 
+  // KAYIT OLMA - siteye ACIK uc.
+  //
+  // Kapiyi tutan sey davet (referans) kodu: kod yoksa hesap acilmaz. Kod
+  // tek kullanimlik ve sureli, uretmeye yalnizca kurucu yetkili.
+  //
+  // Iki ayri fren var:
+  //   - hatali deneme  -> giris ile ORTAK IP kilidi (8 hata = 10 dakika)
+  //   - basarili kayit -> ayni IP'den saatte en fazla KAYIT_SAATLIK_AZAMI
+  // Ilki kodu deneme yanilmayla bulmayi, ikincisi eline gecerli bir kod
+  // gecen birinin seri hesap acmasini engelliyor.
+  if (yol === '/api/kayit' && yontem === 'POST') {
+    const ip = istekIp(istek);
+
+    const kalanKilit = guvenlik.kilitliMi(ip);
+    if (kalanKilit > 0) {
+      return jsonYaz(cevap, 429, {
+        hata:
+          'Çok fazla hatalı deneme. ' +
+          Math.ceil(kalanKilit / 60) +
+          ' dakika sonra tekrar dene.',
+        kalanSaniye: kalanKilit,
+      });
+    }
+
+    if (!guvenlik.kayitHakkiVarMi(ip)) {
+      return jsonYaz(cevap, 429, {
+        hata: 'Bu bağlantıdan çok fazla hesap açıldı. Bir saat sonra tekrar dene.',
+      });
+    }
+
+    const govde = await govdeOku(istek);
+    const sonuc = dogrula.kayit(govde);
+    if (sonuc.hata) return hataYaz(cevap, 400, sonuc.hata);
+
+    const { tuz, ozet } = await guvenlik.sifreOzetle(sonuc.deger.sifre);
+    const cikti = await veri.kayitOlustur({
+      adSoyad: sonuc.deger.adSoyad,
+      eposta: sonuc.deger.eposta,
+      telefon: sonuc.deger.telefon,
+      davetKodu: sonuc.deger.davetKodu,
+      tuz,
+      ozet,
+    });
+
+    if (cikti.hata) {
+      if (cikti.hata === 'eposta') {
+        return hataYaz(cevap, 409, 'Bu e-posta adresiyle bir hesap zaten var.');
+      }
+      // Kod hatasi kaba kuvvet sayacina yazilir
+      const kayit = guvenlik.hataEkle(ip);
+      console.warn(
+        '[kayit] BASARISIZ  ip=' + ip + '  sebep=' + cikti.hata +
+          (kayit.kilitBitis ? '  -> 10 DAKIKA KILITLENDI' : '')
+      );
+      return hataYaz(
+        cevap,
+        400,
+        cikti.hata === 'sure'
+          ? 'Referans numarasının süresi dolmuş. Yeni numara iste.'
+          : 'Referans numarası geçersiz veya daha önce kullanılmış.'
+      );
+    }
+
+    // Hesap acildi - kullaniciyi dogrudan iceri al, bir de giris yapmasin
+    guvenlik.hatalariTemizle(ip);
+    guvenlik.kayitSay(ip);
+    const jeton = await guvenlik.oturumAc(ip, cikti.hesap.id);
+    console.log('[kayit] yeni hesap  id=' + cikti.hesap.id + '  ip=' + ip);
+
+    return jsonYaz(cevap, 200, { girisli: true }, {
+      'Set-Cookie': guvenlik.cerezKur(jeton, guvenliMi(istek)),
+    });
+  }
+
   if (yol === '/api/cikis' && yontem === 'POST') {
     const jeton = guvenlik.cerezOku(istek.headers.cookie, guvenlik.CEREZ_ADI);
     await guvenlik.oturumKapat(jeton);
@@ -284,10 +364,19 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
 
   if (!girisli) return hataYaz(cevap, 401, 'Giriş gerekli.');
 
+  // Buradan asagisi VERIYE dokunuyor ve her kayit bir hesaba ait (31 Tem
+  // 2026). Oturumun kime ait oldugu belirsizse hangi veriyi gosterecegimizi
+  // bilemeyiz - yeniden giris istenir. Uygulamada bu oturumlar sema
+  // hizalanirken zaten siliniyor, buradaki kontrol son emniyet kemeri.
+  const benId = oturum && oturum.kullaniciId != null ? oturum.kullaniciId : null;
+  if (benId === null) {
+    return hataYaz(cevap, 401, 'Oturum hangi hesaba ait bilinmiyor. Çıkış yapıp tekrar gir.');
+  }
+
   // ---- Veri okuma -------------------------------------------------------
 
   if (yol === '/api/veri' && yontem === 'GET') {
-    const pano = await veri.panoVerisi();
+    const pano = await veri.panoVerisi(benId);
     return jsonYaz(cevap, 200, Object.assign({ girisli: true }, pano));
   }
 
@@ -298,17 +387,20 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     const sonuc = dogrula.arac(govde);
     if (sonuc.hata) return hataYaz(cevap, 400, sonuc.hata);
 
-    await veri.yedekAl('arac kaydet: ' + sonuc.deger.ad);
+    await veri.yedekAl(benId, 'arac kaydet: ' + sonuc.deger.ad);
     // Kaydedilen arac her zaman aktif olur (kullanici onunla plan yapiyor)
-    const kayit = await veri.aracKaydet(sonuc.deger, true);
+    const kayit = await veri.aracKaydet(benId, sonuc.deger, true);
+    // null = gonderilen id BASKASININ araci. Var olmayan kayittan ayirmiyoruz:
+    // "bu id baskasinda var" bilgisi bile sizmasin.
+    if (!kayit) return hataYaz(cevap, 404, 'Araç bulunamadı.');
     return jsonYaz(cevap, 200, { arac: kayit });
   }
 
   if (yol.startsWith('/api/arac/') && yontem === 'DELETE') {
     const id = dogrula.kimlik(yol.slice('/api/arac/'.length));
     if (!id) return hataYaz(cevap, 400, 'Geçersiz kimlik.');
-    await veri.yedekAl('arac sil: ' + id);
-    const silindi = await veri.aracSil(id);
+    await veri.yedekAl(benId, 'arac sil: ' + id);
+    const silindi = await veri.aracSil(benId, id);
     if (!silindi) return hataYaz(cevap, 404, 'Araç bulunamadı.');
     return jsonYaz(cevap, 200, { silindi: true });
   }
@@ -316,7 +408,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
   if (yol.startsWith('/api/arac-aktif/') && yontem === 'POST') {
     const id = dogrula.kimlik(yol.slice('/api/arac-aktif/'.length));
     if (!id) return hataYaz(cevap, 400, 'Geçersiz kimlik.');
-    const oldu = await veri.aracAktifYap(id);
+    const oldu = await veri.aracAktifYap(benId, id);
     if (!oldu) return hataYaz(cevap, 404, 'Araç bulunamadı.');
     return jsonYaz(cevap, 200, { aktif: id });
   }
@@ -331,7 +423,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     // Yeni kutu ise katalog sinirini kontrol et
     const yeni = !dogrula.kimlik(govde.id);
     if (yeni) {
-      const sayi = await veri.kutuSayisi();
+      const sayi = await veri.kutuSayisi(benId);
       if (sayi >= dogrula.SINIR.katalogAzami) {
         return hataYaz(
           cevap,
@@ -341,16 +433,17 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
       }
     }
 
-    await veri.yedekAl('kutu kaydet: ' + sonuc.deger.ad);
-    const kayit = await veri.kutuKaydet(sonuc.deger);
+    await veri.yedekAl(benId, 'kutu kaydet: ' + sonuc.deger.ad);
+    const kayit = await veri.kutuKaydet(benId, sonuc.deger);
+    if (!kayit) return hataYaz(cevap, 404, 'Kutu bulunamadı.');
     return jsonYaz(cevap, 200, { kutu: kayit });
   }
 
   if (yol.startsWith('/api/kutu/') && yontem === 'DELETE') {
     const id = dogrula.kimlik(yol.slice('/api/kutu/'.length));
     if (!id) return hataYaz(cevap, 400, 'Geçersiz kimlik.');
-    await veri.yedekAl('kutu sil: ' + id);
-    const silindi = await veri.kutuSil(id);
+    await veri.yedekAl(benId, 'kutu sil: ' + id);
+    const silindi = await veri.kutuSil(benId, id);
     if (!silindi) return hataYaz(cevap, 404, 'Kutu bulunamadı.');
     return jsonYaz(cevap, 200, { silindi: true });
   }
@@ -364,7 +457,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
 
     const yeni = !dogrula.kimlik(govde.id);
     if (yeni) {
-      const sayi = await veri.planSayisi();
+      const sayi = await veri.planSayisi(benId);
       if (sayi >= dogrula.SINIR.planAzami) {
         return hataYaz(
           cevap,
@@ -374,16 +467,17 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
       }
     }
 
-    await veri.yedekAl('plan kaydet: ' + sonuc.deger.ad);
-    const kayit = await veri.planKaydet(sonuc.deger);
+    await veri.yedekAl(benId, 'plan kaydet: ' + sonuc.deger.ad);
+    const kayit = await veri.planKaydet(benId, sonuc.deger);
+    if (!kayit) return hataYaz(cevap, 404, 'Plan bulunamadı.');
     return jsonYaz(cevap, 200, { plan: kayit });
   }
 
   if (yol.startsWith('/api/plan/') && yontem === 'DELETE') {
     const id = dogrula.kimlik(yol.slice('/api/plan/'.length));
     if (!id) return hataYaz(cevap, 400, 'Geçersiz kimlik.');
-    await veri.yedekAl('plan sil: ' + id);
-    const silindi = await veri.planSil(id);
+    await veri.yedekAl(benId, 'plan sil: ' + id);
+    const silindi = await veri.planSil(benId, id);
     if (!silindi) return hataYaz(cevap, 404, 'Plan bulunamadı.');
     return jsonYaz(cevap, 200, { silindi: true });
   }
@@ -393,7 +487,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
   if (yol === '/api/ayarlar' && yontem === 'POST') {
     const govde = await govdeOku(istek);
     const sonuc = dogrula.ayarlar(govde);
-    await veri.ayarlariYaz(sonuc.deger);
+    await veri.ayarlariYaz(benId, sonuc.deger);
     return jsonYaz(cevap, 200, { ayarlar: sonuc.deger });
   }
 
@@ -405,13 +499,9 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     if (sonuc.hata) return hataYaz(cevap, 400, sonuc.hata);
 
     // Artik birden fazla hesap var: "yoneticinin sifresi" diye tek bir sey
-    // yok, giris yapan KENDI sifresini degistiriyor.
-    if (!oturum || oturum.kullaniciId === null) {
-      return hataYaz(cevap, 401,
-        'Oturum hangi hesaba ait bilinmiyor. Çıkış yapıp tekrar gir.');
-    }
-
-    const hesap = await veri.yoneticiOkuId(oturum.kullaniciId);
+    // yok, giris yapan KENDI sifresini degistiriyor. (Oturumun sahibi
+    // yukarida, butun veri uclarindan once dogrulaniyor.)
+    const hesap = await veri.yoneticiOkuId(benId);
     if (!hesap) return hataYaz(cevap, 401, 'Hesap bulunamadı. Tekrar giriş yap.');
 
     const eskiDogru = await guvenlik.sifreDogru(
@@ -438,10 +528,54 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     return jsonYaz(cevap, 200, { tamam: true, kullanici: yeniKullanici });
   }
 
+  // ---- DAVET KODLARI ----------------------------------------------------
+  //  Yalnizca KURUCU. Rol sistemi bundan ibaret: kayit olan kullanicilar
+  //  kendi verilerinin tam sahibi ama baskasini davet edemez - yoksa kod
+  //  zinciri kontrolden cikar, siteye kimin girdigini takip edemem.
+  if (yol === '/api/davetler' || yol.startsWith('/api/davet')) {
+    const hesap = await veri.yoneticiOkuId(benId);
+    if (!hesap || hesap.kurucu !== true) {
+      return hataYaz(cevap, 403, 'Bu işlem için yetkin yok.');
+    }
+
+    if (yol === '/api/davetler' && yontem === 'GET') {
+      return jsonYaz(cevap, 200, {
+        davetler: await veri.davetleriListele(),
+        gecerlilikGun: guvenlik.DAVET_GECERLILIK_GUN,
+      });
+    }
+
+    if (yol === '/api/davet' && yontem === 'POST') {
+      const govde = await govdeOku(istek);
+      const etiket = dogrula.metin(govde.etiket, dogrula.SINIR.metinKisa);
+      const davet = await veri.davetEkle({
+        kod: guvenlik.davetKoduUret(),
+        etiket,
+        olusturanId: benId,
+        sonKullanma: guvenlik.davetSonKullanma(),
+      });
+      console.log('[davet] uretildi  kod=' + davet.kod + '  etiket=' + JSON.stringify(etiket));
+      return jsonYaz(cevap, 200, { davet });
+    }
+
+    if (yol.startsWith('/api/davet/') && yontem === 'DELETE') {
+      const kod = dogrula.davetKodu(yol.slice('/api/davet/'.length));
+      if (!kod) return hataYaz(cevap, 400, 'Geçersiz referans numarası.');
+      const silindi = await veri.davetSil(kod);
+      // Kullanilmis kod silinmez: kimin hangi kodla girdigi kayitli kalsin
+      if (!silindi) {
+        return hataYaz(cevap, 404, 'Numara bulunamadı ya da zaten kullanılmış.');
+      }
+      return jsonYaz(cevap, 200, { silindi: true });
+    }
+
+    return hataYaz(cevap, 404, 'Böyle bir API ucu yok.');
+  }
+
   // ---- YEDEKLER ---------------------------------------------------------
 
   if (yol === '/api/yedekler' && yontem === 'GET') {
-    return jsonYaz(cevap, 200, { yedekler: await veri.yedekleriListele() });
+    return jsonYaz(cevap, 200, { yedekler: await veri.yedekleriListele(benId) });
   }
 
   return hataYaz(cevap, 404, 'Böyle bir API ucu yok.');
@@ -476,13 +610,19 @@ const sunucu = http.createServer(async (istek, cevap) => {
       return cevap.end();
     }
 
-    // Girisliyken /giris istenirse ana sayfaya dondur
-    if (girisli && (yol === '/giris' || yol === '/giris.html')) {
+    // Girisliyken giris/kayit sayfasi istenirse ana sayfaya dondur
+    if (
+      girisli &&
+      (yol === '/giris' || yol === '/giris.html' ||
+       yol === '/kayit' || yol === '/kayit.html')
+    ) {
       cevap.writeHead(302, guvenlikBasliklari({ Location: '/' }));
       return cevap.end();
     }
 
-    const dosyaYolu = yol === '/giris' ? '/giris.html' : yol;
+    // Uzantisiz adresler (/giris, /kayit) ilgili html dosyasina baglanir
+    const UZANTISIZ = { '/giris': '/giris.html', '/kayit': '/kayit.html' };
+    const dosyaYolu = UZANTISIZ[yol] || yol;
     return await statikSun(cevap, dosyaYolu);
   } catch (hata) {
     const kod = hata && hata.kod ? hata.kod : 500;

@@ -63,20 +63,26 @@ async function kur() {
     }
 
     const { tuz, ozet } = await guvenlik.sifreOzetle(sifre);
-    await veri.yoneticiEkle({ kullanici, tuz, ozet, ad: '' });
+    // ILK hesap kurucudur: davet (referans) kodu uretme yetkisi onda.
+    await veri.yoneticiEkle({ kullanici, tuz, ozet, ad: '', kurucu: true });
 
-    console.log('  [2/3] Yonetici hesabi olusturuldu: ' + kullanici);
+    console.log('  [2/3] Yonetici hesabi olusturuldu: ' + kullanici + '  (kurucu)');
     console.log('        Duz metin sifre veritabaninda TUTULMUYOR (scrypt ozeti).');
   }
 
   // ---- 4. Durum ozeti ---------------------------------------------------
+  // Sayimlar BUTUN hesaplarin toplami. veri.js'teki sayaclar tek hesabi
+  // sorar (her hesabin kendi verisi var), buradaki amac ise genel durum.
+  const say = (tablo) =>
+    sorgu('select count(*)::int as n from ' + tablo).then((r) => r.rows[0].n);
+
   const [aracSayisi, kutuSayisi, planSayisi] = await Promise.all([
-    sorgu('select count(*)::int as n from araclar').then((r) => r.rows[0].n),
-    veri.kutuSayisi(),
-    veri.planSayisi(),
+    say('araclar'),
+    say('kutular'),
+    say('planlar'),
   ]);
 
-  console.log('  [3/3] Mevcut veri:');
+  console.log('  [3/3] Mevcut veri (tum hesaplar):');
   console.log('        Arac  : ' + aracSayisi + (aracSayisi === 0 ? '  (bos - dogru, kullanici olusturacak)' : ''));
   console.log('        Kutu  : ' + kutuSayisi + (kutuSayisi === 0 ? '  (bos - dogru, hazir olcu yok)' : ''));
   console.log('        Plan  : ' + planSayisi);
