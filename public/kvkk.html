@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Kişisel Verilerin Korunması — DEPOLAMA</title>
+<link rel="stylesheet" href="/giris.css">
+</head>
+<body>
+
+<!-- ==========================================================================
+     KVKK AYDINLATMA METNI
+
+     DIKKAT — BU METIN HUKUKI DANISMANLIK DEGILDIR.
+     Icerik sitenin GERCEKTEN ne topladigina bakilarak yazildi (kayit formu,
+     oturum kaydi, IP sayaclari) ve teknik olarak dogrudur. Ama:
+
+       1. <span class="doldur"> ile isaretli yerler DOLDURULMALI
+          (veri sorumlusunun unvani ve iletisim bilgileri).
+       2. Yayina girmeden once bir hukukcuya okutulmasi gerekir.
+
+     Yeni bir kisisel veri toplanmaya baslarsa (ornegin adres, TC kimlik)
+     bu metin de guncellenmeli - yoksa metin yanlis beyan haline gelir.
+     ========================================================================== -->
+
+<main class="kutu metin">
+  <div class="logo">📦</div>
+  <h1>Kişisel Verilerin Korunması</h1>
+  <p class="tarih">Aydınlatma metni · Son güncelleme: 31 Temmuz 2026</p>
+
+  <p>
+    Bu metin, DEPOLAMA (Tır Yükleme Planlayıcı) uygulamasına kayıt olurken
+    verdiğin kişisel verilerin nasıl işlendiğini 6698 sayılı Kişisel Verilerin
+    Korunması Kanunu (KVKK) kapsamında açıklar.
+  </p>
+
+  <h2>Veri sorumlusu</h2>
+  <p>
+    <span class="doldur">[Veri sorumlusunun adı / unvanı]</span> —
+    iletişim: <span class="doldur">[e-posta / adres]</span>
+  </p>
+
+  <h2>Hangi veriler işleniyor</h2>
+  <ul>
+    <li><strong>Kayıt formunda verdiklerin:</strong> ad soyad, e-posta adresi,
+      telefon numarası.</li>
+    <li><strong>Hesap güvenliği için oluşanlar:</strong> şifrenin kriptografik
+      özeti (şifrenin kendisi <em>hiçbir yerde</em> saklanmaz), oturum kaydı,
+      son giriş zamanı, IP adresi.</li>
+    <li><strong>Uygulamada oluşturduğun içerik:</strong> araç ve kutu ölçüleri,
+      kaydettiğin yükleme planları. Bunlar yalnızca senin hesabına bağlıdır;
+      başka kullanıcılar göremez.</li>
+  </ul>
+
+  <h2>Neden işleniyor</h2>
+  <ul>
+    <li>Hesabını oluşturmak ve girişte kimliğini doğrulamak.</li>
+    <li>Uygulamayı sana sunmak, verilerini hesabına bağlı tutmak.</li>
+    <li>Kötüye kullanımı önlemek (hatalı giriş denemelerini saymak, aynı
+      bağlantıdan seri hesap açılmasını engellemek).</li>
+    <li>Gerektiğinde seninle iletişime geçmek.</li>
+  </ul>
+
+  <h2>Hukuki sebep</h2>
+  <p>
+    Veriler, KVKK md. 5/2-(c) uyarınca <strong>hizmetin sunulabilmesi için
+    gerekli olması</strong> ve md. 5/2-(f) uyarınca <strong>meşru menfaat</strong>
+    (hesap güvenliği) hukuki sebeplerine dayanarak işlenir.
+  </p>
+
+  <h2>Nerede saklanıyor</h2>
+  <p>
+    Uygulama <strong>Render</strong> üzerinde çalışıyor, veriler
+    <strong>Neon</strong> (PostgreSQL) veritabanında tutuluyor. Her iki
+    hizmetin de kullanılan sunucuları <strong>Frankfurt / Almanya</strong>
+    bölgesindedir. Bu, kişisel verilerin <strong>yurt dışına aktarılması</strong>
+    anlamına gelir; kayıt olarak bu aktarımın farkında olduğunu kabul etmiş
+    olursun.
+  </p>
+
+  <h2>Ne kadar süre saklanıyor</h2>
+  <p>
+    Hesabın var olduğu sürece. Hesap silindiğinde ona bağlı bütün veriler
+    (araçlar, kutular, planlar, yedekler) veritabanı düzeyinde birlikte silinir.
+    Oturum kayıtları 12 saat sonra, güvenlik sayaçları en geç 1 gün sonra
+    kendiliğinden temizlenir.
+  </p>
+
+  <h2>Kimlerle paylaşılıyor</h2>
+  <p>
+    Yukarıda sayılan barındırma ve veritabanı sağlayıcıları dışında
+    <strong>hiç kimseyle</strong>. Veriler satılmaz, reklam amacıyla
+    kullanılmaz. Uygulamada üçüncü taraf izleme (analytics) veya reklam kodu
+    yoktur; yalnızca oturumunu taşıyan zorunlu bir çerez kullanılır.
+  </p>
+
+  <h2>Haklarının neler olduğu</h2>
+  <p>KVKK md. 11 uyarınca; kişisel verilerinin işlenip işlenmediğini öğrenme,
+    bilgi talep etme, düzeltilmesini veya silinmesini isteme, işlenmesine
+    itiraz etme ve zararın giderilmesini talep etme haklarına sahipsin.
+    Başvurularını <span class="doldur">[e-posta / adres]</span> üzerinden
+    iletebilirsin.</p>
+
+  <p class="gecis"><a href="/kayit">← Kayıt sayfasına dön</a></p>
+</main>
+
+</body>
+</html>

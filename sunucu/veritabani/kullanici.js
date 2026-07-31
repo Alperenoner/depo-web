@@ -22,7 +22,9 @@ const { havuz } = require('./baglanti');
 const guvenlik = require('../guvenlik');
 const veri = require('../veri');
 
-const EN_KISA_SIFRE = 6;
+// Sinir tek kaynaktan: kayit formu, sifre degistirme ve bu komut ayni
+// sayiyi kullansin (once 8 / 6 / 10 diye ucu de farkliydi).
+const EN_KISA_SIFRE = require('../dogrula').SINIR.sifreEnAz;
 
 function kullanimYaz() {
   console.log(`

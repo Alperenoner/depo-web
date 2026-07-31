@@ -27,6 +27,9 @@ const KILIT_SURESI_MS = 10 * 60 * 1000; // 10 dakika
 const DAVET_GECERLILIK_GUN = 14;
 const KAYIT_SAATLIK_AZAMI = 3; // ayni IP'den saatte en fazla 3 hesap
 
+// Sifre sifirlama kodu - davetten cok daha kisa omurlu
+const SIFIRLAMA_GECERLILIK_SAAT = 24;
+
 // --- Sifre ozeti -----------------------------------------------------------
 
 function scryptSozu(sifre, tuz) {
@@ -57,58 +60,130 @@ async function sifreDogru(sifre, tuz, beklenenOzet) {
   return crypto.timingSafeEqual(a, b);
 }
 
-// --- Kaba kuvvet koruması (bellekte) ---------------------------------------
-//  Sunucu yeniden baslarsa sifirlanir; kabul edilebilir bir odun.
+// --- Kaba kuvvet koruması (VERITABANINDA) ----------------------------------
+//
+//  31 Tem 2026'ya kadar bellekteki bir Map'ti ve "sunucu yeniden baslarsa
+//  sifirlanir, kabul edilebilir bir odun" diye yazilmisti. Kayit ucu disari
+//  acilinca odun kabul edilemez hale geldi:
+//
+//  Render ucretsiz katmani 15 dakika trafik almazsa UYUYOR. Yani sayac
+//  neredeyse her saat sifirlaniyordu - koruma var saniliyordu ama barindirma
+//  bicimi onu surekli siliyordu. Artik `ip_sayaclari` tablosunda.
+//
+//  Iki tur var:
+//    'giris' -> HATALI deneme sayilir, esigi asinca kilit
+//    'kayit' -> BASARILI kayit sayilir, saatlik tavan
+//
+//  Sayac tutmak ugruna giris akisini bozmuyoruz: bu fonksiyonlar hata
+//  firlatirsa cagiran taraf akisi surdurur (bkz. server.js). Veritabani
+//  gecici olarak cevap vermiyorsa kimse kapida kalmasin.
 
-const hatalar = new Map(); // ip -> {sayi, ilkDeneme, kilitBitis}
+const TUR_GIRIS = 'giris';
+const TUR_KAYIT = 'kayit';
 
-function kilitliMi(ip) {
-  const kayit = hatalar.get(ip);
-  if (!kayit || !kayit.kilitBitis) return 0;
-  const kalan = kayit.kilitBitis - Date.now();
-  if (kalan <= 0) {
-    hatalar.delete(ip);
-    return 0;
-  }
-  return Math.ceil(kalan / 1000); // kalan saniye
+/** Kilit sürüyorsa kalan saniye, degilse 0. */
+async function kilitliMi(ip) {
+  const { rows } = await sorgu(
+    'select kilit_bitis from ip_sayaclari where ip = $1 and tur = $2',
+    [ip, TUR_GIRIS]
+  );
+  if (rows.length === 0 || !rows[0].kilit_bitis) return 0;
+  const kalan = new Date(rows[0].kilit_bitis).getTime() - Date.now();
+  return kalan > 0 ? Math.ceil(kalan / 1000) : 0;
 }
 
-function hataEkle(ip) {
-  const kayit = hatalar.get(ip) || { sayi: 0, ilkDeneme: Date.now() };
-  kayit.sayi += 1;
-  if (kayit.sayi >= AZAMI_HATA) {
-    kayit.kilitBitis = Date.now() + KILIT_SURESI_MS;
-    kayit.sayi = 0; // kilit bitince sifirdan sayilsin
-  }
-  hatalar.set(ip, kayit);
-  return kayit;
+/**
+ * Hatali denemeyi isler. Esik asilirsa kilidi kurar.
+ * @returns {Promise<{sayi:number, kilitBitis:Date|null}>}
+ */
+async function hataEkle(ip) {
+  // Tek cumlede oku-artir-yaz: iki istek ayni anda gelirse sayaç kaybolmasin.
+  // Kilit suresi gecmisse sayaç sifirdan baslar (`case` icindeki kontrol).
+  const { rows } = await sorgu(
+    `insert into ip_sayaclari (ip, tur, sayi, guncellendi)
+     values ($1, $2, 1, now())
+     on conflict (ip, tur) do update set
+       sayi = case
+                when ip_sayaclari.kilit_bitis is not null
+                 and ip_sayaclari.kilit_bitis < now() then 1
+                else ip_sayaclari.sayi + 1
+              end,
+       kilit_bitis = case
+                       when ip_sayaclari.kilit_bitis is not null
+                        and ip_sayaclari.kilit_bitis < now() then null
+                       else ip_sayaclari.kilit_bitis
+                     end,
+       guncellendi = now()
+     returning sayi`,
+    [ip, TUR_GIRIS]
+  );
+
+  const sayi = rows[0].sayi;
+  if (sayi < AZAMI_HATA) return { sayi, kilitBitis: null };
+
+  // Esik doldu: kilidi kur ve sayaci sifirla (kilit bitince sifirdan saysin)
+  const bitis = new Date(Date.now() + KILIT_SURESI_MS);
+  await sorgu(
+    `update ip_sayaclari set sayi = 0, kilit_bitis = $3, guncellendi = now()
+      where ip = $1 and tur = $2`,
+    [ip, TUR_GIRIS, bitis]
+  );
+  return { sayi, kilitBitis: bitis };
 }
 
-function hatalariTemizle(ip) {
-  hatalar.delete(ip);
+/** Basarili giristen sonra sayaci temizler. */
+async function hatalariTemizle(ip) {
+  await sorgu('delete from ip_sayaclari where ip = $1 and tur = $2', [ip, TUR_GIRIS]);
 }
 
-// --- Kayit sikligi (bellekte) ----------------------------------------------
+// --- Kayit sikligi ---------------------------------------------------------
 //  Gecerli bir davet kodu ele gecse bile ayni yerden seri hesap acilmasin.
-//  Kaba kuvvet sayacindan AYRI tutuluyor: biri hatali denemeyi, digeri
-//  BASARILI kaydi sayiyor.
-
-const kayitlar = new Map(); // ip -> {sayi, pencereBitis}
+//  Kaba kuvvet sayacindan AYRI: biri hatali denemeyi, digeri BASARILI kaydi
+//  sayiyor.
 
 /** Bu IP bir hesap daha acabilir mi? */
-function kayitHakkiVarMi(ip) {
-  const kayit = kayitlar.get(ip);
-  if (!kayit || Date.now() > kayit.pencereBitis) return true;
-  return kayit.sayi < KAYIT_SAATLIK_AZAMI;
+async function kayitHakkiVarMi(ip) {
+  const { rows } = await sorgu(
+    'select sayi, pencere_bitis from ip_sayaclari where ip = $1 and tur = $2',
+    [ip, TUR_KAYIT]
+  );
+  if (rows.length === 0) return true;
+  const bitis = rows[0].pencere_bitis;
+  if (!bitis || new Date(bitis).getTime() < Date.now()) return true; // pencere kapandi
+  return rows[0].sayi < KAYIT_SAATLIK_AZAMI;
 }
 
-function kayitSay(ip) {
-  const kayit = kayitlar.get(ip);
-  if (!kayit || Date.now() > kayit.pencereBitis) {
-    kayitlar.set(ip, { sayi: 1, pencereBitis: Date.now() + 60 * 60 * 1000 });
-    return;
-  }
-  kayit.sayi += 1;
+/** Basarili kaydi sayar (saatlik pencere). */
+async function kayitSay(ip) {
+  await sorgu(
+    `insert into ip_sayaclari (ip, tur, sayi, pencere_bitis, guncellendi)
+     values ($1, $2, 1, now() + interval '1 hour', now())
+     on conflict (ip, tur) do update set
+       sayi = case
+                when ip_sayaclari.pencere_bitis is null
+                  or ip_sayaclari.pencere_bitis < now() then 1
+                else ip_sayaclari.sayi + 1
+              end,
+       pencere_bitis = case
+                         when ip_sayaclari.pencere_bitis is null
+                           or ip_sayaclari.pencere_bitis < now()
+                         then now() + interval '1 hour'
+                         else ip_sayaclari.pencere_bitis
+                       end,
+       guncellendi = now()`,
+    [ip, TUR_KAYIT]
+  );
+}
+
+/** Isi bitmis sayac satirlarini siler. Oturum temizligiyle ayni saatte calisir. */
+async function eskiSayaclariSil() {
+  const { rowCount } = await sorgu(
+    `delete from ip_sayaclari
+      where guncellendi < now() - interval '1 day'
+        and (kilit_bitis   is null or kilit_bitis   < now())
+        and (pencere_bitis is null or pencere_bitis < now())`
+  );
+  return rowCount;
 }
 
 // --- Davet (referans) kodu -------------------------------------------------
@@ -117,19 +192,40 @@ function kayitSay(ip) {
 // kullansin). Uzunlugu TAM 32 olmali: 256 % 32 == 0 oldugu icin `bayt % 32`
 // her karakteri ESIT olasilikla secer. 32'den farkli bir uzunlukta bazi
 // karakterler digerlerinden sik cikar ve kod tahmin edilebilirlesir.
-const { DAVET_ALFABE, DAVET_ON_EK, DAVET_GOVDE_UZUNLUK } = require('./dogrula');
+const {
+  DAVET_ALFABE, DAVET_ON_EK, SIFIRLAMA_ON_EK, DAVET_GOVDE_UZUNLUK,
+} = require('./dogrula');
 
 /** Ornek: DEPO-7K4M-92XQ  (8 karakter x 32 secenek = 40 bit) */
-function davetKoduUret() {
+function koduUret(onEk) {
   const bayt = crypto.randomBytes(DAVET_GOVDE_UZUNLUK);
   let harfler = '';
   for (const b of bayt) harfler += DAVET_ALFABE[b % DAVET_ALFABE.length];
-  return DAVET_ON_EK + '-' + harfler.slice(0, 4) + '-' + harfler.slice(4);
+  return onEk + '-' + harfler.slice(0, 4) + '-' + harfler.slice(4);
 }
 
-/** Kodun son kullanma tarihi (uretim ani + DAVET_GECERLILIK_GUN). */
+/** Hesap acan referans numarasi. */
+function davetKoduUret() {
+  return koduUret(DAVET_ON_EK);
+}
+
+/** Var olan hesabin sifresini degistiren kod - AYRI on ek, karismasin. */
+function sifirlamaKoduUret() {
+  return koduUret(SIFIRLAMA_ON_EK);
+}
+
+/** Davet kodunun son kullanma tarihi (uretim ani + DAVET_GECERLILIK_GUN). */
 function davetSonKullanma() {
   return new Date(Date.now() + DAVET_GECERLILIK_GUN * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Sifirlama kodunun son kullanma tarihi.
+ * Davetten cok daha kisa: davet "bir ara hesap ac" demek, sifirlama ise
+ * su an yasanan bir sorunu cozuyor - elde uzun sure beklememeli.
+ */
+function sifirlamaSonKullanma() {
+  return new Date(Date.now() + SIFIRLAMA_GECERLILIK_SAAT * 60 * 60 * 1000);
 }
 
 // --- Oturum ----------------------------------------------------------------
@@ -235,6 +331,7 @@ module.exports = {
   AZAMI_HATA,
   OTURUM_SURESI_MS,
   DAVET_GECERLILIK_GUN,
+  SIFIRLAMA_GECERLILIK_SAAT,
   KAYIT_SAATLIK_AZAMI,
   sifreOzetle,
   sifreDogru,
@@ -243,8 +340,11 @@ module.exports = {
   hatalariTemizle,
   kayitHakkiVarMi,
   kayitSay,
+  eskiSayaclariSil,
   davetKoduUret,
+  sifirlamaKoduUret,
   davetSonKullanma,
+  sifirlamaSonKullanma,
   oturumAc,
   oturumGecerliMi,
   oturumKapat,

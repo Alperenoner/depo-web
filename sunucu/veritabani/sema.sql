@@ -259,8 +259,8 @@ end $$;
 --  olmasi lazim ve o numarayi yalnizca kurucu uretip veriyor.
 -- ===========================================================================
 
--- Kurucu = davet kodu uretebilen hesap. Rol sistemi bundan ibaret; kayit
--- olan kullanicilar kendi verilerinin sahibidir ama kod uretemez.
+-- Kurucu = sitenin sahibi. Bkz. asagidaki "ROLLER" bolumu: yetki artik
+-- `yetkili` kolonunda, `kurucu` yalnizca DOKUNULAMAZLIK isareti.
 alter table yonetici add column if not exists kurucu boolean not null default false;
 
 -- Kayit formundan gelen iletisim bilgileri.
@@ -300,3 +300,85 @@ create table if not exists davetler (
 );
 
 create index if not exists davetler_olusturuldu on davetler (olusturuldu desc);
+
+-- ===========================================================================
+--  ROLLER, ASKIYA ALMA, SIFRE SIFIRLAMA, KALICI IP SAYACI   (31 Tem 2026)
+--
+--  Kayit disari acilinca uc sey eksik kaldi:
+--    1. Sifresini unutan kullaniciyi kurtarmanin tek yolu kurucunun
+--       terminaline gitmesiydi.
+--    2. Kim kayit oldugu hicbir ekranda gorunmuyordu.
+--    3. Birini durdurmanin tek yolu SILMEKTI - verisi de gidiyordu.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+--  YETKI
+--
+--  Iki ayri kavram, bilerek iki kolon:
+--
+--    yetkili -> yonetici yetkisi. VERILEBILIR ve GERI ALINABILIR. Yetkili
+--               olan herkes ayni seyleri yapar: davet kodu uretir,
+--               kullanicilari gorur, askiya alir, sifre sifirlama kodu
+--               uretir, baskasina yetki verir.
+--
+--    kurucu  -> sitenin sahibi. DOKUNULAMAZ: yetkisi alinamaz, askiya
+--               alinamaz, silinemez - yetki verdigi biri onu kendi
+--               sitesinden kilitleyemesin diye. Tek satir.
+--
+--  Yetki kontrolu her yerde `yetkili` uzerinden yapilir; kurucuya goc
+--  sirasinda zaten true veriliyor. `kurucu` kolonu KALDI cunku eski surum
+--  onu okuyor - boylece bu sema eski kodu bozmadan calisabiliyor.
+-- ---------------------------------------------------------------------------
+alter table yonetici add column if not exists yetkili boolean not null default false;
+
+update yonetici set yetkili = true where kurucu and not yetkili;
+
+-- Askiya alma: hesap durur, verisi durur, giris kabul edilmez.
+-- Silmenin aksine GERI ALINABILIR (silme, cascade ile veriyi de goturuyor).
+alter table yonetici add column if not exists aktif boolean not null default true;
+
+-- ---------------------------------------------------------------------------
+--  SIFRE SIFIRLAMA KODLARI
+--
+--  Neden e-posta degil: proje tek bagimlilikla calisiyor (`pg`) ve disari
+--  mail atmak icin baska bir servise baglanmak gerekirdi. Davet kodu
+--  duzeni zaten elimizde - ayni sey: yetkili kod uretir, kisiye kendi
+--  verir (telefon/WhatsApp), kisi kodu sifre sifirlama sayfasina yazar.
+--
+--  Davetten farki: bu kod BELLI BIR HESABA bagli ve omru kisa.
+-- ---------------------------------------------------------------------------
+create table if not exists sifirlamalar (
+  kod          text        primary key,
+  kullanici_id smallint    not null references yonetici (id) on delete cascade,
+  olusturan_id smallint    references yonetici (id) on delete set null,
+  olusturuldu  timestamptz not null default now(),
+  son_kullanma timestamptz not null,
+  kullanildi   timestamptz
+);
+
+create index if not exists sifirlamalar_kullanici on sifirlamalar (kullanici_id);
+
+-- ---------------------------------------------------------------------------
+--  IP SAYACLARI  (kaba kuvvet + kayit sikligi)
+--
+--  Eskiden ikisi de BELLEKTEKI bir Map'te duruyordu ve sunucu yeniden
+--  baslayinca sifirlaniyordu. Site giris arkasindayken kabul edilebilir bir
+--  odundu; kayit uctan disari acilinca degil:
+--
+--  Render ucretsiz katmani 15 dakika trafik almazsa UYUYOR. Yani sayac
+--  neredeyse her saat sifirlaniyordu - koruma var saniliyordu ama
+--  barindirma bicimi onu surekli siliyordu.
+--
+--  tur: 'giris' (hatali deneme, kilitle) | 'kayit' (basarili kayit, sayaç)
+-- ---------------------------------------------------------------------------
+create table if not exists ip_sayaclari (
+  ip            text        not null,
+  tur           text        not null,
+  sayi          integer     not null default 0,
+  pencere_bitis timestamptz,
+  kilit_bitis   timestamptz,
+  guncellendi   timestamptz not null default now(),
+  primary key (ip, tur)
+);
+
+create index if not exists ip_sayaclari_guncellendi on ip_sayaclari (guncellendi);

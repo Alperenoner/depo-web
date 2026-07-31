@@ -22,7 +22,7 @@
   <!-- Davet kodu uretmek yalnizca KURUCUNUN isi. Dugme baslangicta gizli;
        /api/veri "ben.kurucu" derse uygulama.js aciyor. Gizlemek sadece
        gorunustur - asil kontrol sunucuda (/api/davet* 403 doner). -->
-  <button class="ikincil ufak" id="davetAc" hidden>🎫 Davet Kodları</button>
+  <button class="ikincil ufak" id="davetAc" hidden>👥 Yönetim</button>
   <button class="ikincil ufak" id="sifreAc">🔑 Şifre</button>
   <button class="ikincil ufak" id="cikis">Çıkış</button>
 </header>
@@ -475,7 +475,48 @@
      KULLANIMLIK ve surelidir. -->
 <div class="perde ust" id="davetPerde" hidden>
   <div class="pencere genis">
-    <h3>🎫 Davet Kodları</h3>
+    <h3>👥 Yönetim</h3>
+
+    <nav class="sekmeler" id="yonetimSekmeleri" role="tablist">
+      <button class="sekme etkin" data-yonetim="kullanicilar" role="tab" type="button">
+        Kullanıcılar
+      </button>
+      <button class="sekme" data-yonetim="davetler" role="tab" type="button">
+        Davet Kodları
+      </button>
+    </nav>
+
+    <!-- ============================================ KULLANICILAR ========= -->
+    <div id="yonetimKullanicilar">
+      <p class="ipucu">
+        Kayıt olan herkes burada. <strong>Yönetici</strong> yaptığın kişi
+        seninle aynı şeyleri yapabilir: kod üretir, kullanıcıları görür,
+        askıya alır, şifre sıfırlar. <strong>Kurucu hesabına kimse
+        dokunamaz.</strong>
+      </p>
+
+      <p class="hata-not" id="kullaniciHata"></p>
+
+      <div class="tablo-sarmal" id="kullaniciTabloYer">
+        <table class="bloklar">
+          <thead>
+            <tr>
+              <th>Ad Soyad</th>
+              <th>E-posta</th>
+              <th>Telefon</th>
+              <th>Rol</th>
+              <th>Son giriş</th>
+              <th>Veri</th>
+              <th class="eylem"></th>
+            </tr>
+          </thead>
+          <tbody id="kullaniciGovde"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============================================ DAVET KODLARI ======== -->
+    <div id="yonetimDavetler" hidden>
     <p class="ipucu">
       Siteye kayıt olabilmek için referans numarası gerekir. Numarayı üret,
       kaydolacak kişiye ver. Her numara <strong>bir kez</strong> kullanılır ve
@@ -512,6 +553,7 @@
         <tbody id="davetGovde"></tbody>
       </table>
     </div>
+    </div><!-- /yonetimDavetler -->
 
     <div class="dugmeler">
       <button class="ikincil" id="davetKapat">Kapat</button>

@@ -172,9 +172,10 @@
     D.sinirlar = v.sinirlar || {};
     D.formatlar = v.formatlar || [];
 
-    // Davet kodu uretme dugmesi yalnizca kurucuda gorunur. Gizlemek bir
-    // GUVENLIK onlemi degil, duzen: uclar sunucuda da kontrol ediliyor.
-    gorunur($('davetAc'), Boolean(D.ben && D.ben.kurucu));
+    // Yonetim dugmesi yalnizca YETKILI hesaplarda gorunur (kurucu her zaman
+    // yetkilidir). Gizlemek bir GUVENLIK onlemi degil, duzen: uclar sunucuda
+    // da kontrol ediliyor - yetkisiz istek 403 doner.
+    gorunur($('davetAc'), Boolean(D.ben && D.ben.yetkili));
 
     $('baslik').textContent = D.ayarlar.baslik || 'DEPOLAMA';
     $('altBaslik').textContent = D.ayarlar.altBaslik || '';
@@ -1125,9 +1126,167 @@
   async function davetleriAc() {
     gorunur($('davetPerde'), true);
     $('davetHata').textContent = '';
+    $('kullaniciHata').textContent = '';
     $('davetEtiket').value = '';
-    await davetleriYukle();
-    $('davetEtiket').focus();
+    yonetimSekmesi('kullanicilar');
+    await Promise.all([kullanicilariYukle(), davetleriYukle()]);
+  }
+
+  /** Yonetim penceresindeki iki sekme: Kullanicilar / Davet Kodlari */
+  function yonetimSekmesi(ad) {
+    for (const dugme of $('yonetimSekmeleri').querySelectorAll('[data-yonetim]')) {
+      dugme.classList.toggle('etkin', dugme.dataset.yonetim === ad);
+    }
+    gorunur($('yonetimKullanicilar'), ad === 'kullanicilar');
+    gorunur($('yonetimDavetler'), ad === 'davetler');
+  }
+
+  // ---- Kullanicilar --------------------------------------------------------
+
+  async function kullanicilariYukle() {
+    try {
+      const c = await fetch('/api/kullanicilar');
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'Kullanıcılar okunamadı.');
+      kullanicilariCiz(cevap.kullanicilar || []);
+    } catch (h) {
+      $('kullaniciHata').textContent = h.message;
+      kullanicilariCiz([]);
+    }
+  }
+
+  function kullanicilariCiz(liste) {
+    const govde = $('kullaniciGovde');
+    govde.innerHTML = '';
+    gorunur($('kullaniciTabloYer'), liste.length > 0);
+
+    for (const k of liste) {
+      const tr = document.createElement('tr');
+      if (!k.aktif) tr.style.opacity = '0.5';
+
+      const hucre = (metinDeger, sinifAd) => {
+        const td = document.createElement('td');
+        td.textContent = metinDeger;
+        if (sinifAd) td.className = sinifAd;
+        tr.appendChild(td);
+        return td;
+      };
+
+      hucre(k.ad || '—', k.ad ? '' : 'isaret');
+      hucre(k.eposta || k.kullanici);
+      hucre(k.telefon || '—', k.telefon ? '' : 'isaret');
+
+      // Rol: kurucu > yonetici > kullanici. Askidaysa onu yazmak daha onemli.
+      let rol;
+      if (!k.aktif) rol = 'Askıda';
+      else if (k.kurucu) rol = 'Kurucu';
+      else if (k.yetkili) rol = 'Yönetici';
+      else rol = 'Kullanıcı';
+      hucre(rol, k.kurucu || k.yetkili ? '' : 'isaret');
+
+      hucre(k.sonGorulme ? tarihYaz(k.sonGorulme) : 'hiç girmemiş', 'isaret');
+      hucre(k.kutu + ' kutu · ' + k.plan + ' plan', 'isaret');
+
+      const eylem = document.createElement('td');
+      eylem.className = 'eylem';
+
+      // Kurucu satirinda hicbir dugme yok: yetkisi alinamaz, askiya
+      // alinamaz, sifresi buradan sifirlanamaz. Kendi satirinda da yok -
+      // kimse kendini disari kilitlemesin.
+      if (!k.kurucu && !(D.ben && D.ben.kullanici === k.kullanici)) {
+        const yetki = document.createElement('button');
+        yetki.className = 'ikincil ufak';
+        yetki.textContent = k.yetkili ? 'Yetkiyi al' : 'Yönetici yap';
+        yetki.addEventListener('click', () => yetkiDegistir(k));
+        eylem.appendChild(yetki);
+
+        // Uc dugmenin de agirligi ayni: hicbiri "asil eylem" degil, o yuzden
+        // hepsi ikincil. (Askiya al ayrica tehlike rengi aliyor.)
+        const sifirla = document.createElement('button');
+        sifirla.className = 'ikincil ufak';
+        sifirla.textContent = 'Şifre sıfırla';
+        sifirla.addEventListener('click', () => sifirlamaKoduUret(k));
+        eylem.appendChild(sifirla);
+
+        const askiya = document.createElement('button');
+        askiya.className = k.aktif ? 'ikincil ufak tehlike' : 'ikincil ufak';
+        askiya.textContent = k.aktif ? 'Askıya al' : 'Geri aç';
+        askiya.addEventListener('click', () => aktifDegistir(k));
+        eylem.appendChild(askiya);
+      }
+
+      tr.appendChild(eylem);
+      govde.appendChild(tr);
+    }
+  }
+
+  async function yetkiDegistir(k) {
+    const kim = k.ad || k.eposta || k.kullanici;
+    const soru = k.yetkili
+      ? kim + ' kişisinin yönetici yetkisi alınsın mı?'
+      : kim + ' yönetici yapılsın mı? Seninle aynı şeyleri yapabilecek: ' +
+        'kod üretme, kullanıcıları görme, askıya alma, şifre sıfırlama.';
+    if (!window.confirm(soru)) return;
+
+    await yonetimIstegi('/api/kullanici/' + k.id + '/yetki', { yetkili: !k.yetkili });
+  }
+
+  async function aktifDegistir(k) {
+    const kim = k.ad || k.eposta || k.kullanici;
+    const soru = k.aktif
+      ? kim + ' askıya alınsın mı? Giriş yapamaz ama VERİSİ SİLİNMEZ, ' +
+        'istediğinde geri açabilirsin.'
+      : kim + ' hesabı geri açılsın mı?';
+    if (!window.confirm(soru)) return;
+
+    await yonetimIstegi('/api/kullanici/' + k.id + '/aktif', { aktif: !k.aktif });
+  }
+
+  async function yonetimIstegi(yol, govde) {
+    $('kullaniciHata').textContent = '';
+    try {
+      const c = await fetch(yol, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(govde),
+      });
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'İşlem yapılamadı.');
+      await kullanicilariYukle();
+    } catch (h) {
+      $('kullaniciHata').textContent = h.message;
+    }
+  }
+
+  async function sifirlamaKoduUret(k) {
+    const kim = k.ad || k.eposta || k.kullanici;
+    if (!window.confirm(
+      kim + ' için şifre sıfırlama kodu üretilsin mi?\n\n' +
+      'Kodu kendisine sen ileteceksin. Varsa eski kodu geçersiz olur.'
+    )) return;
+
+    $('kullaniciHata').textContent = '';
+    try {
+      const c = await fetch('/api/sifirlama', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kullaniciId: k.id }),
+      });
+      const cevap = await c.json();
+      if (!c.ok) throw new Error(cevap.hata || 'Kod üretilemedi.');
+
+      const kod = cevap.sifirlama.kod;
+      // Kod BIR KEZ gosteriliyor; panoya da koyuyoruz ki kaybolmasin.
+      try { await navigator.clipboard.writeText(kod); } catch (e) { /* pano yoksa dert degil */ }
+      window.prompt(
+        kim + ' için şifre sıfırlama kodu (' + cevap.gecerlilikSaat +
+        ' saat geçerli).\nKopyalandı — kişiye ilet, /sifre-sifirla sayfasına yazacak:',
+        kod
+      );
+      await kullanicilariYukle();
+    } catch (h) {
+      $('kullaniciHata').textContent = h.message;
+    }
   }
 
   async function davetleriYukle() {
@@ -2060,10 +2219,13 @@
     $('planKaydet').addEventListener('click', planKaydetDugmesi);
     $('planAd').addEventListener('input', planKaydetDenetle);
 
-    // -- davet kodlari penceresi (yalnizca kurucu) --
+    // -- yonetim penceresi (yalnizca yetkili) --
     $('davetAc').addEventListener('click', davetleriAc);
     $('davetKapat').addEventListener('click', () => gorunur($('davetPerde'), false));
     $('davetUret').addEventListener('click', davetUretDugmesi);
+    for (const dugme of $('yonetimSekmeleri').querySelectorAll('[data-yonetim]')) {
+      dugme.addEventListener('click', () => yonetimSekmesi(dugme.dataset.yonetim));
+    }
 
     // -- pencereler: Esc kapatir, perdeye tiklamak kapatir --
     //

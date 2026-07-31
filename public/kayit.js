@@ -22,7 +22,8 @@
     davetKodu: document.getElementById('davetKodu'),
   };
 
-  const EN_KISA_SIFRE = 8;
+  // Sunucudaki karsiligi: dogrula.SINIR.sifreEnAz
+  const EN_KISA_SIFRE = 10;
 
   function uyariGoster(mesaj, odak) {
     uyari.textContent = mesaj;

@@ -50,10 +50,34 @@ const ACIK_YOLLAR = new Set([
   '/kayit',
   '/kayit.html',
   '/kayit.js',
+  // Sifresini unutan kullanici giris yapamaz - kurtarma sayfasi da acik olmali.
+  '/sifre-sifirla',
+  '/sifre-sifirla.html',
+  '/sifre-sifirla.js',
+  // KVKK aydinlatma metni: kayit formundan once okunacak, yani giris istemez.
+  '/kvkk',
+  '/kvkk.html',
   '/api/durum',
   '/api/giris',
   '/api/kayit',
+  '/api/sifre-sifirla',
   '/api/cikis',
+]);
+
+// Uzantisiz adres -> dosya
+const UZANTISIZ = {
+  '/giris': '/giris.html',
+  '/kayit': '/kayit.html',
+  '/sifre-sifirla': '/sifre-sifirla.html',
+  '/kvkk': '/kvkk.html',
+};
+
+// Girisliyken bu sayfalarin anlami yok - ana sayfaya dondurulur.
+// KVKK metni LISTEDE DEGIL: girisli kullanici da okuyabilmeli.
+const GIRISTE_ANLAMSIZ = new Set([
+  '/giris', '/giris.html',
+  '/kayit', '/kayit.html',
+  '/sifre-sifirla', '/sifre-sifirla.html',
 ]);
 
 const ICERIK_TURLERI = {
@@ -236,7 +260,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
   if (yol === '/api/giris' && yontem === 'POST') {
     const ip = istekIp(istek);
 
-    const kalanKilit = guvenlik.kilitliMi(ip);
+    const kalanKilit = await guvenlik.kilitliMi(ip);
     if (kalanKilit > 0) {
       return jsonYaz(cevap, 429, {
         hata:
@@ -261,7 +285,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
       : await guvenlik.sifreDogru(sifre, SAHTE_TUZ, SAHTE_OZET);
 
     if (!hesap || !sifreOk) {
-      const kayit = guvenlik.hataEkle(ip);
+      const kayit = await guvenlik.hataEkle(ip);
       console.warn(
         '[giris] BASARISIZ  ip=' + ip + '  kullanici=' + JSON.stringify(kullanici) +
           (kayit.kilitBitis ? '  -> 10 DAKIKA KILITLENDI' : '')
@@ -269,7 +293,18 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
       return hataYaz(cevap, 401, 'Kullanıcı adı veya şifre hatalı.');
     }
 
-    guvenlik.hatalariTemizle(ip);
+    // Askiya alinmis hesap: sifre DOGRU olsa bile iceri alinmaz.
+    // Kontrol sifre dogrulamasindan SONRA - "bu hesap askida" bilgisi
+    // sifreyi bilmeyen birine sizmasin.
+    if (hesap.aktif !== true) {
+      console.warn('[giris] ASKIDA hesap denedi  id=' + hesap.id + '  ip=' + ip);
+      return hataYaz(
+        cevap, 403,
+        'Bu hesap askıya alınmış. Sana referans numarasını veren kişiyle görüş.'
+      );
+    }
+
+    await guvenlik.hatalariTemizle(ip);
     const jeton = await guvenlik.oturumAc(ip, hesap.id);
     console.log('[giris] basarili  ip=' + ip);
 
@@ -291,7 +326,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
   if (yol === '/api/kayit' && yontem === 'POST') {
     const ip = istekIp(istek);
 
-    const kalanKilit = guvenlik.kilitliMi(ip);
+    const kalanKilit = await guvenlik.kilitliMi(ip);
     if (kalanKilit > 0) {
       return jsonYaz(cevap, 429, {
         hata:
@@ -302,7 +337,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
       });
     }
 
-    if (!guvenlik.kayitHakkiVarMi(ip)) {
+    if (!(await guvenlik.kayitHakkiVarMi(ip))) {
       return jsonYaz(cevap, 429, {
         hata: 'Bu bağlantıdan çok fazla hesap açıldı. Bir saat sonra tekrar dene.',
       });
@@ -327,7 +362,7 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
         return hataYaz(cevap, 409, 'Bu e-posta adresiyle bir hesap zaten var.');
       }
       // Kod hatasi kaba kuvvet sayacina yazilir
-      const kayit = guvenlik.hataEkle(ip);
+      const kayit = await guvenlik.hataEkle(ip);
       console.warn(
         '[kayit] BASARISIZ  ip=' + ip + '  sebep=' + cikti.hata +
           (kayit.kilitBitis ? '  -> 10 DAKIKA KILITLENDI' : '')
@@ -342,10 +377,67 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     }
 
     // Hesap acildi - kullaniciyi dogrudan iceri al, bir de giris yapmasin
-    guvenlik.hatalariTemizle(ip);
-    guvenlik.kayitSay(ip);
+    await guvenlik.hatalariTemizle(ip);
+    await guvenlik.kayitSay(ip);
     const jeton = await guvenlik.oturumAc(ip, cikti.hesap.id);
     console.log('[kayit] yeni hesap  id=' + cikti.hesap.id + '  ip=' + ip);
+
+    return jsonYaz(cevap, 200, { girisli: true }, {
+      'Set-Cookie': guvenlik.cerezKur(jeton, guvenliMi(istek)),
+    });
+  }
+
+  // SIFRE SIFIRLAMA - siteye ACIK uc.
+  //
+  // Sifresini unutan kullanici buraya geliyor. Kodu yetkili biri uretip
+  // kendisine veriyor (telefon/WhatsApp) - e-posta gonderen bir servis yok.
+  // Kod tek kullanimlik, belli bir hesaba bagli ve 24 saatlik.
+  //
+  // Kaba kuvvet freni girisle ORTAK: kodu deneme yanilmayla bulmak, sifreyi
+  // deneme yanilmayla bulmaktan farksiz.
+  if (yol === '/api/sifre-sifirla' && yontem === 'POST') {
+    const ip = istekIp(istek);
+
+    const kalanKilit = await guvenlik.kilitliMi(ip);
+    if (kalanKilit > 0) {
+      return jsonYaz(cevap, 429, {
+        hata:
+          'Çok fazla hatalı deneme. ' +
+          Math.ceil(kalanKilit / 60) +
+          ' dakika sonra tekrar dene.',
+        kalanSaniye: kalanKilit,
+      });
+    }
+
+    const govde = await govdeOku(istek);
+    const sonuc = dogrula.sifreSifirla(govde);
+    if (sonuc.hata) return hataYaz(cevap, 400, sonuc.hata);
+
+    const { tuz, ozet } = await guvenlik.sifreOzetle(sonuc.deger.yeni);
+    const cikti = await veri.sifreSifirla({ kod: sonuc.deger.kod, tuz, ozet });
+
+    if (cikti.hata) {
+      if (cikti.hata === 'askida') {
+        return hataYaz(cevap, 403, 'Bu hesap askıya alınmış.');
+      }
+      const kayit = await guvenlik.hataEkle(ip);
+      console.warn(
+        '[sifirlama] BASARISIZ  ip=' + ip + '  sebep=' + cikti.hata +
+          (kayit.kilitBitis ? '  -> 10 DAKIKA KILITLENDI' : '')
+      );
+      return hataYaz(
+        cevap, 400,
+        cikti.hata === 'sure'
+          ? 'Sıfırlama kodunun süresi dolmuş. Yeni kod iste.'
+          : 'Sıfırlama kodu geçersiz veya daha önce kullanılmış.'
+      );
+    }
+
+    // Sifre degisti; kullaniciyi dogrudan iceri al (veri.sifreSifirla eski
+    // oturumlarin hepsini kapatmisti, bu yepyeni bir oturum).
+    await guvenlik.hatalariTemizle(ip);
+    const jeton = await guvenlik.oturumAc(ip, cikti.hesap.id);
+    console.log('[sifirlama] sifre degisti  hesap=' + cikti.hesap.id + '  ip=' + ip);
 
     return jsonYaz(cevap, 200, { girisli: true }, {
       'Set-Cookie': guvenlik.cerezKur(jeton, guvenliMi(istek)),
@@ -528,15 +620,106 @@ async function apiIsle(istek, cevap, yol, girisli, oturum) {
     return jsonYaz(cevap, 200, { tamam: true, kullanici: yeniKullanici });
   }
 
-  // ---- DAVET KODLARI ----------------------------------------------------
-  //  Yalnizca KURUCU. Rol sistemi bundan ibaret: kayit olan kullanicilar
-  //  kendi verilerinin tam sahibi ama baskasini davet edemez - yoksa kod
-  //  zinciri kontrolden cikar, siteye kimin girdigini takip edemem.
-  if (yol === '/api/davetler' || yol.startsWith('/api/davet')) {
+  // ---- YETKILI ISLERI ---------------------------------------------------
+  //  Davet kodlari, kullanici listesi, rol verme, askiya alma, sifre
+  //  sifirlama kodu. Hepsi `yetkili` ister.
+  //
+  //  IKI KAVRAM, bilerek ayri:
+  //    yetkili -> yonetici yetkisi, verilebilir ve geri alinabilir
+  //    kurucu  -> sitenin sahibi, DOKUNULAMAZ (yetkisi alinamaz, askiya
+  //               alinamaz) - yetki verdigi biri onu kendi sitesinden
+  //               kilitleyemesin diye
+  if (
+    yol === '/api/davetler' || yol.startsWith('/api/davet') ||
+    yol === '/api/kullanicilar' || yol.startsWith('/api/kullanici/') ||
+    yol === '/api/sifirlama'
+  ) {
     const hesap = await veri.yoneticiOkuId(benId);
-    if (!hesap || hesap.kurucu !== true) {
+    if (!hesap || hesap.yetkili !== true) {
       return hataYaz(cevap, 403, 'Bu işlem için yetkin yok.');
     }
+
+    // -- Kullanicilar --
+
+    if (yol === '/api/kullanicilar' && yontem === 'GET') {
+      return jsonYaz(cevap, 200, { kullanicilar: await veri.yoneticiListesi() });
+    }
+
+    // /api/kullanici/:id/yetki  ve  /api/kullanici/:id/aktif
+    if (yol.startsWith('/api/kullanici/') && yontem === 'POST') {
+      const parcalar = yol.slice('/api/kullanici/'.length).split('/');
+      const hedefId = Number(parcalar[0]);
+      const islem = parcalar[1];
+
+      if (!Number.isInteger(hedefId) || hedefId <= 0) {
+        return hataYaz(cevap, 400, 'Geçersiz kullanıcı.');
+      }
+      if (hedefId === benId) {
+        // Kendi yetkini alman ya da kendini askiya alman = kendini disari
+        // kilitlemen. Tek yetkili sensen site yonetilemez hale gelirdi.
+        return hataYaz(cevap, 400, 'Kendi hesabında bu işlemi yapamazsın.');
+      }
+
+      const hedef = await veri.yoneticiOkuId(hedefId);
+      if (!hedef) return hataYaz(cevap, 404, 'Kullanıcı bulunamadı.');
+      if (hedef.kurucu === true) {
+        return hataYaz(cevap, 403, 'Kurucu hesabına dokunulamaz.');
+      }
+
+      const govde = await govdeOku(istek);
+
+      if (islem === 'yetki') {
+        const ver = dogrula.mantik(govde.yetkili, false);
+        const sonuc = await veri.yoneticiYetkiVer(hedefId, ver);
+        if (!sonuc) return hataYaz(cevap, 404, 'Kullanıcı bulunamadı.');
+        console.log('[yetki] ' + (ver ? 'verildi' : 'alindi') +
+                    '  hedef=' + hedefId + '  yapan=' + benId);
+        return jsonYaz(cevap, 200, { yetkili: ver });
+      }
+
+      if (islem === 'aktif') {
+        const ac = dogrula.mantik(govde.aktif, false);
+        const sonuc = await veri.yoneticiAktifYap(hedefId, ac);
+        if (!sonuc) return hataYaz(cevap, 404, 'Kullanıcı bulunamadı.');
+        console.log('[hesap] ' + (ac ? 'acildi' : 'ASKIYA ALINDI') +
+                    '  hedef=' + hedefId + '  yapan=' + benId);
+        return jsonYaz(cevap, 200, { aktif: ac });
+      }
+
+      return hataYaz(cevap, 404, 'Böyle bir API ucu yok.');
+    }
+
+    // -- Sifre sifirlama kodu uretme --
+
+    if (yol === '/api/sifirlama' && yontem === 'POST') {
+      const govde = await govdeOku(istek);
+      const hedefId = Number(govde.kullaniciId);
+      if (!Number.isInteger(hedefId) || hedefId <= 0) {
+        return hataYaz(cevap, 400, 'Geçersiz kullanıcı.');
+      }
+
+      const hedef = await veri.yoneticiOkuId(hedefId);
+      if (!hedef) return hataYaz(cevap, 404, 'Kullanıcı bulunamadı.');
+      // Kurucunun sifresi buradan sifirlanamaz: yetki verdigi biri kodu
+      // uretip onun hesabini ele geciremesin.
+      if (hedef.kurucu === true) {
+        return hataYaz(cevap, 403, 'Kurucu hesabına dokunulamaz.');
+      }
+
+      const kayit = await veri.sifirlamaEkle({
+        kod: guvenlik.sifirlamaKoduUret(),
+        kullaniciId: hedefId,
+        olusturanId: benId,
+        sonKullanma: guvenlik.sifirlamaSonKullanma(),
+      });
+      console.log('[sifirlama] kod uretildi  hedef=' + hedefId + '  yapan=' + benId);
+      return jsonYaz(cevap, 200, {
+        sifirlama: kayit,
+        gecerlilikSaat: guvenlik.SIFIRLAMA_GECERLILIK_SAAT,
+      });
+    }
+
+    // -- Davet kodlari --
 
     if (yol === '/api/davetler' && yontem === 'GET') {
       return jsonYaz(cevap, 200, {
@@ -610,18 +793,14 @@ const sunucu = http.createServer(async (istek, cevap) => {
       return cevap.end();
     }
 
-    // Girisliyken giris/kayit sayfasi istenirse ana sayfaya dondur
-    if (
-      girisli &&
-      (yol === '/giris' || yol === '/giris.html' ||
-       yol === '/kayit' || yol === '/kayit.html')
-    ) {
+    // Girisliyken giris/kayit/sifirlama sayfasi istenirse ana sayfaya dondur.
+    // (KVKK metni haric - girisli kullanici da okuyabilmeli.)
+    if (girisli && GIRISTE_ANLAMSIZ.has(yol)) {
       cevap.writeHead(302, guvenlikBasliklari({ Location: '/' }));
       return cevap.end();
     }
 
-    // Uzantisiz adresler (/giris, /kayit) ilgili html dosyasina baglanir
-    const UZANTISIZ = { '/giris': '/giris.html', '/kayit': '/kayit.html' };
+    // Uzantisiz adresler ilgili html dosyasina baglanir
     const dosyaYolu = UZANTISIZ[yol] || yol;
     return await statikSun(cevap, dosyaYolu);
   } catch (hata) {
@@ -689,9 +868,10 @@ async function baslat() {
   }
 
   await guvenlik.eskiOturumlariSil();
-  // Saatte bir suresi gecmis oturumlari temizle
+  // Saatte bir suresi gecmis oturumlari ve isi bitmis IP sayaclarini temizle
   setInterval(() => {
     guvenlik.eskiOturumlariSil().catch(() => {});
+    guvenlik.eskiSayaclariSil().catch(() => {});
   }, 60 * 60 * 1000).unref();
 
   sunucu.listen(PORT, '0.0.0.0', () => {

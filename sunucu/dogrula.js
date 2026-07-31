@@ -32,9 +32,13 @@ const SINIR = {
   // Kayit formu
   epostaAzami: 120,
   telefonBasamak: [10, 15], // ulke kodu dahil/haric
-  // Kayit siteye ACIK oldugu icin sifre alt siniri burada daha yuksek.
-  // sifreDegistir hala 6 kabul ediyor: var olan hesaplar kilitlenmesin.
-  sifreEnAz: 8,
+  // Sifre alt siniri - TEK KAYNAK burasi.
+  //
+  // Kayit sirasinda 8, sifre degistirmede 6, arayuzde 10 isteniyordu: 8
+  // karakterle kayit olan biri sifresini degistirmeye kalkinca daha kati bir
+  // sinirla karsilasiyordu. Ucu de 10'a cekildi. Var olan hesaplar
+  // kilitlenmiyor - sinir yalnizca YENI sifre belirlerken bakiliyor.
+  sifreEnAz: 10,
 
   katalogAzami: 300, // en fazla kac kutu cesidi
   planAzami: 200, // en fazla kac kayitli plan
@@ -289,7 +293,9 @@ function sifreDegistir(gelen) {
   const kullanici = metin(g.kullanici, SINIR.metinKisa);
 
   if (!eski) return { hata: 'Mevcut şifreyi girmelisin.' };
-  if (yeni.length < 6) return { hata: 'Yeni şifre en az 6 karakter olmalı.' };
+  if (yeni.length < SINIR.sifreEnAz) {
+    return { hata: 'Yeni şifre en az ' + SINIR.sifreEnAz + ' karakter olmalı.' };
+  }
   if (yeni !== yeniTekrar) return { hata: 'Yeni şifreler birbirini tutmuyor.' };
   if (yeni === eski) return { hata: 'Yeni şifre eskisiyle aynı olamaz.' };
   if (kullanici && !/^[\wğüşıöçĞÜŞİÖÇ.@-]{3,}$/.test(kullanici)) {
@@ -312,23 +318,29 @@ function sifreDegistir(gelen) {
 // yukleyebiliyor), o yuzden alfabe guvenlik.js'ten buraya alindi.
 const DAVET_ALFABE = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const DAVET_GOVDE_UZUNLUK = 8;
-const DAVET_ON_EK = 'DEPO';
+
+// Iki kod turu var ve on ekleri AYRI olmali: kullanici sifre sifirlama
+// kodunu kayit formuna yapistirdiginda "bu o kod degil" diyebilelim.
+const DAVET_ON_EK = 'DEPO';      // hesap acar
+const SIFIRLAMA_ON_EK = 'SIFRE'; // sifre degistirir
 
 /**
- * Kullanicinin yazdigi referans numarasini standart bicime getirir.
+ * Kullanicinin yazdigi kodu standart bicime getirir.
  * "depo 7k4m 92xq", "7K4M92XQ", "DEPO-7K4M-92XQ" -> "DEPO-7K4M-92XQ"
  * Cizgi, bosluk ve kucuk harf serbest; tanimadigimiz karakter varsa null.
+ *
+ * @param {string} onEk  DAVET_ON_EK ya da SIFIRLAMA_ON_EK
  */
-function davetKodu(deger) {
+function kod(deger, onEk) {
   const ham = String(deger ?? '')
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
 
-  // 12 karakter = on ekiyle birlikte yazilmis, 8 = yalnizca govde
+  // on ek + govde uzunlugu = on ekiyle yazilmis; yalniz govde de kabul
   let govde = ham;
-  if (ham.length === DAVET_ON_EK.length + DAVET_GOVDE_UZUNLUK) {
-    if (!ham.startsWith(DAVET_ON_EK)) return null;
-    govde = ham.slice(DAVET_ON_EK.length);
+  if (ham.length === onEk.length + DAVET_GOVDE_UZUNLUK) {
+    if (!ham.startsWith(onEk)) return null;
+    govde = ham.slice(onEk.length);
   }
   if (govde.length !== DAVET_GOVDE_UZUNLUK) return null;
 
@@ -336,7 +348,17 @@ function davetKodu(deger) {
     if (!DAVET_ALFABE.includes(harf)) return null;
   }
 
-  return DAVET_ON_EK + '-' + govde.slice(0, 4) + '-' + govde.slice(4);
+  return onEk + '-' + govde.slice(0, 4) + '-' + govde.slice(4);
+}
+
+/** Referans (davet) numarasi - hesap acar. */
+function davetKodu(deger) {
+  return kod(deger, DAVET_ON_EK);
+}
+
+/** Sifre sifirlama kodu - var olan hesabin sifresini degistirir. */
+function sifirlamaKodu(deger) {
+  return kod(deger, SIFIRLAMA_ON_EK);
 }
 
 const EPOSTA_KALIBI = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
@@ -385,16 +407,37 @@ function kayit(gelen) {
   }
   if (sifre !== sifreTekrar) return { hata: 'Şifreler birbirini tutmuyor.' };
 
-  const kod = davetKodu(g.davetKodu);
-  if (!kod) return { hata: 'Referans numarası geçersiz.' };
+  const davet = davetKodu(g.davetKodu);
+  if (!davet) return { hata: 'Referans numarası geçersiz.' };
 
-  return { deger: { adSoyad, eposta: ePosta, telefon: tel, sifre, davetKodu: kod } };
+  return { deger: { adSoyad, eposta: ePosta, telefon: tel, sifre, davetKodu: davet } };
+}
+
+/**
+ * Sifre sifirlama formu: kod + yeni sifre (iki kez).
+ * Kodu yetkili uretip kisiye kendisi veriyor - bkz. sunucu/veri.js
+ */
+function sifreSifirla(gelen) {
+  const g = gelen || {};
+
+  const kodu = sifirlamaKodu(g.kod);
+  if (!kodu) return { hata: 'Sıfırlama kodu geçersiz.' };
+
+  const yeni = String(g.yeni ?? '');
+  const yeniTekrar = String(g.yeniTekrar ?? '');
+  if (yeni.length < SINIR.sifreEnAz) {
+    return { hata: 'Yeni şifre en az ' + SINIR.sifreEnAz + ' karakter olmalı.' };
+  }
+  if (yeni !== yeniTekrar) return { hata: 'Şifreler birbirini tutmuyor.' };
+
+  return { deger: { kod: kodu, yeni } };
 }
 
 module.exports = {
   SINIR,
   DAVET_ALFABE,
   DAVET_ON_EK,
+  SIFIRLAMA_ON_EK,
   DAVET_GOVDE_UZUNLUK,
   VARSAYILAN_RENK,
   STRATEJI_IDLERI,
@@ -414,7 +457,9 @@ module.exports = {
   ayarlar,
   sifreDegistir,
   davetKodu,
+  sifirlamaKodu,
   eposta,
   telefon,
   kayit,
+  sifreSifirla,
 };

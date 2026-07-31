@@ -139,6 +139,44 @@ input.kod {
   text-transform: uppercase;
 }
 
+/* --------------------------------------------------------------------------
+   Metin sayfasi (kvkk.html) - okunacak uzun metin, form degil
+   -------------------------------------------------------------------------- */
+
+.kutu.metin {
+  max-width: 720px;
+  text-align: left;
+  padding: 36px 32px 32px;
+}
+
+.kutu.metin h1 { margin-bottom: 4px; }
+
+.kutu.metin h2 {
+  margin: 26px 0 8px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--vurgu);
+}
+
+.kutu.metin p,
+.kutu.metin li { color: var(--yazi); font-size: 14px; }
+
+.kutu.metin ul { padding-left: 20px; margin: 8px 0; }
+.kutu.metin li { margin-bottom: 5px; }
+
+.kutu.metin .tarih {
+  color: var(--soluk);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+/* Doldurulmasi gereken yerler - gozden kacmasin */
+.kutu.metin .doldur {
+  background: rgb(255 212 59 / 0.14);
+  border-bottom: 1px dashed rgb(255 212 59 / 0.6);
+  padding: 0 3px;
+}
+
 /* Sayfalar arasi gecis baglantisi */
 .gecis {
   margin: 22px 0 0;

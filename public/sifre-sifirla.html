@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Şifre Sıfırla — DEPOLAMA</title>
+<link rel="stylesheet" href="/giris.css">
+</head>
+<body>
+
+<main class="kutu">
+  <div class="logo">🔑</div>
+  <h1>ŞİFRE SIFIRLA</h1>
+  <p class="alt">Sıfırlama kodunu yetkiliden alman gerekir</p>
+
+  <form id="form" autocomplete="on" novalidate>
+    <label for="kod">Sıfırlama Kodu</label>
+    <input id="kod" class="kod" type="text"
+           placeholder="SIFRE-XXXX-XXXX"
+           autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+    <p class="ipucu">Hesabını açan kişiden iste — kod 24 saat geçerli.</p>
+
+    <label for="yeni">Yeni Şifre</label>
+    <input id="yeni" name="new-password" type="password"
+           autocomplete="new-password" required>
+    <p class="ipucu">En az 10 karakter.</p>
+
+    <label for="yeniTekrar">Yeni Şifre (tekrar)</label>
+    <input id="yeniTekrar" name="new-password-2" type="password"
+           autocomplete="new-password" required>
+
+    <button id="dugme" type="submit">Şifreyi Değiştir</button>
+  </form>
+
+  <p id="uyari" class="uyari" hidden role="alert"></p>
+
+  <p class="gecis">Şifreni hatırladın mı? <a href="/giris">Giriş yap</a></p>
+</main>
+
+<script src="/sifre-sifirla.js"></script>
+</body>
+</html>
