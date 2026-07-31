@@ -8,8 +8,9 @@ Tek çalışma zamanı bağımlılığı Postgres sürücüsü. Bütün HTTP yol
 her piksel ve yerleştirme motorunun tamamı elle yazıldı.
 
 **[Canlı site](https://depo-test-deniz-zkbp.onrender.com)** · giriş gerekir —
-uygulama gerçek yük verisi tuttuğu için herkese açık değil. Aşağıdaki ekran
-görüntüleri arayüzün tamamını gösteriyor.
+uygulama gerçek yük verisi tuttuğu için herkese açık değil. Hesaplar kullanıcılar
+tarafından açılıyor ama yalnızca yöneticinin verdiği **tek kullanımlık referans
+numarasıyla**. Aşağıdaki ekran görüntüleri arayüzün tamamını gösteriyor.
 
 > English README: **[README.md](README.md)**
 
@@ -71,12 +72,70 @@ da değişmeden çalışıyor; test takımını mümkün kılan da bu.
 
 ---
 
+## Tek kullanıcılı bir aracı çok kullanıcılıya çevirmek
+
+Uygulama tek kişi için yazılmıştı. Dışarıdan kullanıcı kabul etmesi gerektiğinde
+asıl mesele kayıt formu değildi — **veritabanındaki her satır herkese aitti.**
+
+Sıra önemliydi. Önce kayıt açılsaydı, kaydolan ilk yabancı bütün kataloğu görür ve
+silebilirdi. Bu yüzden önce sahiplik, en son kayıt sayfası yapıldı.
+
+**Sahiplik.** İçerik tablolarının hepsine `kullanici_id` eklendi ve veri
+katmanındaki her fonksiyonun ilk parametresi bu oldu; hiçbir sorgu
+`where kullanici_id` süzgeci olmadan çalışmıyor. İnce nokta upsert'te: id'ler
+tablo genelinde benzersiz ve istemciden geliyor, o yüzden
+`on conflict (id) do update` bir sahiplik koşulu taşıyor. Olmasa, başkasının
+id'sini gönderen biri o kaydın üzerine yazardı. Eşleşmezse sıfır satır dönüyor ve
+uç **404** veriyor — "böyle bir kayıt yok" ile bilerek ayırt edilemez, ki başka
+bir kullanıcının verisinin varlığı bile sızmasın.
+
+Göç kolonu `default 1` ile ekledi (mevcut satırları kurucuya verdi) ve ardından
+**default'u düşürdü**: artık her insert sahibini açıkça yazmak zorunda, sessizce
+tek bir hesaba düşemiyor.
+
+**Referans numaraları.** `DEPO-7K4M-92XQ` — tek kullanımlık, 14 gün, yalnızca
+yönetici üretiyor ve elden veriyor. Alfabe tam 32 karakter, `0/O` ve `1/I` çıkarıldı:
+kodlar telefonda okunuyor ve `256 % 32 == 0` olduğu için `bayt % 32` her karakteri
+eşit olasılıkla seçiyor. Daha kısa bir alfabe dağılımı bozar ve kodu tahmin
+edilebilir kılardı; uzunluğu bir test kilitliyor. Harcama tek transaction içinde,
+satır `select … for update` ile tutuluyor — aynı kod iki kişiye gönderilse iki
+hesap açılamıyor.
+
+**Rol iki boolean, bir tane değil.** `yetkili` *bu kişi siteyi yönetebilir mi*
+sorusunun cevabı ve verilip geri alınabiliyor. `kurucu` ise *bu hesaba
+dokunulabilir mi* sorusunun cevabı — ve cevap hiçbir zaman evet değil. Yönetici
+başkasını yükseltebilir, hesap askıya alabilir, şifre sıfırlayabilir; ama kurucuyu
+düşüremez, askıya alamaz, şifresini sıfırlayamaz — yoksa güvendiğin biri seni
+kendi sitenden kilitleyebilirdi. Kimse kendi hesabına da müdahale edemiyor: son
+yöneticinin kendini düşürmesi siteyi yönetilemez bırakırdı.
+
+**E-posta servisi olmadan kurtarma.** SMTP eklemek ikinci bir bağımlılık, bir API
+anahtarı ve yeni bir hata sınıfı demekti. Onun yerine aynı kod düzeni şifre
+sıfırlamayı da karşılıyor: yönetici `SIFRE-…` kodu üretiyor, elden veriyor,
+kullanıcı kullanıyor. Ön eki davet kodundan bilerek farklı — yanlış forma
+yapıştırılan kod sessizce yanlış okunmak yerine reddediliyor. Sıfırlama, o hesabın
+bütün oturumlarını kapatıyor: şifreyi unutmakla hesabın elden çıkması birbirine
+çok benziyor.
+
+**Silmek yerine askıya almak.** Hesap silmek araçlarını, kutularını ve planlarını
+da götürüyor. Gerçek bir silme için doğru, "bu kişinin erişimi kesilsin" için
+yanlış. `aktif` eklendi: giriş reddediliyor, oturumları düşüyor, verisi duruyor,
+geri alınabiliyor. Kontrol **şifre doğrulamasından sonra** yapılıyor, ki "bu hesap
+askıda" bilgisi şifreyi bilmeyene sızmasın.
+
+**Ayakta kalan bir hız sınırlayıcı.** Kaba kuvvet sayacı bir `Map` içindeydi ve
+yanına "sunucu yeniden başlarsa sıfırlanır, kabul edilebilir bir ödün" diye not
+düşülmüştü. Değilmiş: ücretsiz barındırma katmanı 15 dakika işlem olmazsa uykuya
+geçiyor, yani sayaç aşağı yukarı her saat siliniyordu. Artık Postgres'te.
+
+---
+
 ## Açıklamayı hak eden kararlar
 
 **Çerçeve yok, tek bağımlılık.** `package.json` içinde tam olarak bir çalışma
 zamanı bağımlılığı var: `pg`. `sunucu/server.js` içindeki yönlendirici
-`if (yol === ... && yontem === ...)` zincirinden ibaret — 589 satırda statik
-dosyalar, oturumlar ve 11 API ucu. Bu boyutta bir uygulamada çerçeve, kaldırdığından
+`if (yol === ... && yontem === ...)` zincirinden ibaret — 909 satırda statik
+dosyalar, oturumlar ve 23 API ucu. Bu boyutta bir uygulamada çerçeve, kaldırdığından
 çok kavram eklerdi.
 
 **Plan sonucu değil tarifi saklıyor.** Kaydedilen plan *hangi araç, hangi kutular,
@@ -95,7 +154,10 @@ biri girmiş.
 **Güvenlik.** Şifreler kullanıcıya özel tuzla scrypt özeti (N=16384, r=8, p=1) —
 düz metin ne saklanıyor ne loglanıyor. Oturumlar Postgres'te tutulan rastgele
 jetonlar, böylece yeni sürüm çıkınca kimse dışarı atılmıyor; HttpOnly çerezle
-taşınıyor. Aynı IP'den sekiz hatalı giriş 10 dakika kilit getiriyor. Veritabanına
+taşınıyor. Aynı IP'den sekiz hatalı giriş 10 dakika kilit getiriyor; sayaç bellekte
+değil veritabanında. Var olmayan bir kullanıcıya yapılan giriş denemesinde de sahte
+bir özete karşı scrypt çalıştırılıyor, böylece cevap süresi hangi kullanıcı adının
+var olduğunu ele vermiyor. Veritabanına
 giden TLS sertifikayı doğruluyor (`sslmode=verify-full`, `rejectUnauthorized: false`
 yok).
 
@@ -105,15 +167,18 @@ yok).
 
 ```
 motor/yerlesim.js      844 satır   yerleştirme motoru — tarayıcı + Node, DOM bilmez
-sunucu/                1.862       HTTP yönlendirici, doğrulama, güvenlik, Postgres
-  server.js              589       yönlendirme, statik dosyalar, 11 API ucu
-  guvenlik.js                      scrypt, oturumlar, kaba kuvvet kilidi
-  veritabani/sema.sql              şema, tekrar çalıştırılabilir
-public/                5.344       arayüz
-  uygulama.js          2.009       durum, formlar, canlı yeniden hesap
+sunucu/                3.255       HTTP yönlendirici, doğrulama, güvenlik, Postgres
+  server.js              909       yönlendirme, statik dosyalar, 23 API ucu
+  veri.js                765       veri katmanı — her sorgu tek bir sahibe kısıtlı
+  dogrula.js             465       girdi doğrulama, kod çözümleme
+  guvenlik.js            355       scrypt, oturumlar, kod üretimi, hız sınırları
+  veritabani/sema.sql    384       10 tablo, tekrar çalıştırılabilir
+public/                6.274       arayüz
+  uygulama.js          2.329       durum, formlar, canlı yeniden hesap, yönetim paneli
   3boyut.js              993       three.js sahnesi, 4 kamera kipi, yükleme animasyonu
   cizim.js               523       2B tuval — kuşbakışı ve yandan kesit
-testler/               1.307       82 test, node:test, test çerçevesi yok
+  giris / kayit / sifre-sifirla    giriş, kayıt ve şifre sıfırlama sayfaları
+testler/               1.551       104 test, node:test, test çerçevesi yok
 ```
 
 ## Çalıştırmak
@@ -126,7 +191,7 @@ npm start                 # http://localhost:5180
 ```
 
 ```bash
-npm test                  # 82 test
+npm test                  # 104 test
 npm run db:dene           # veritabanı bağlantısını dene
 npm run db:kullanici -- liste
 ```
@@ -139,7 +204,9 @@ Node 18+ ve bir Postgres veritabanı gerekiyor. [Neon](https://neon.tech)
 
 ## Durum
 
-Bitti ve yayında. 82 test geçiyor. Temmuz 2026'da iki günde yazıldı.
+Bitti ve yayında. 104 test geçiyor; ayrıca kayıt akışını, sahiplik ayrımını ve rol
+kurallarını gerçek sunucu ve veritabanı üzerinde sınayan uçtan uca bir dizi var.
+Temmuz 2026'da iki günde yazıldı.
 
 ## Lisans
 

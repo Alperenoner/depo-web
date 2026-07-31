@@ -8,8 +8,9 @@ runtime dependency is the Postgres driver. Every HTTP route, every pixel of the
 canvas drawing and the entire placement engine is hand-written.
 
 **[Live site](https://depo-test-deniz-zkbp.onrender.com)** · login required —
-the app manages real load data, so it is not open to the public. The screenshots
-below show the full interface.
+the app manages real load data, so it is not open to the public. Accounts are
+created by the users themselves, but only with a single-use referral code issued
+by an administrator. The screenshots below show the full interface.
 
 > The codebase, UI and documentation are in Turkish — it was built for a Turkish
 > logistics workflow. Turkish README: **[README.tr.md](README.tr.md)**
@@ -72,6 +73,67 @@ Node, which is what makes the test suite possible.
 
 ---
 
+## Turning a single-user tool into a multi-tenant one
+
+The app was built for one operator. When it needed to accept outside users, the
+interesting problem was not the signup form — it was that **every row in the
+database belonged to everybody.**
+
+The order of work mattered. Opening registration first would have meant the first
+stranger to sign up could see and delete the entire catalogue. So data ownership
+came first, the signup page last.
+
+**Ownership.** `kullanici_id` was added to every content table and every function
+in the data layer takes it as its first argument; no query runs without a
+`where kullanici_id` filter. The subtle part is the upsert: ids are unique
+table-wide and arrive from the client, so `on conflict (id) do update` carries an
+ownership predicate. Without it, sending someone else's id would overwrite their
+record. A mismatch returns zero rows and the endpoint answers 404 — deliberately
+indistinguishable from "no such record", so the existence of another user's data
+never leaks.
+
+The migration added the column with `default 1` (handing existing rows to the
+founder) and then **dropped the default**, so from that point on every insert has
+to name its owner rather than silently falling back to one.
+
+**Referral codes.** `DEPO-7K4M-92XQ` — single use, 14 days, generated only by an
+administrator and handed over in person. The alphabet is exactly 32 characters
+with `0/O` and `1/I` removed: the codes get read out over the phone, and `256 % 32
+== 0` means `byte % 32` picks every character with equal probability. A shorter
+alphabet would skew the distribution and make codes guessable; a test locks the
+length. Redemption happens inside one transaction with the row held under
+`select … for update`, so the same code sent to two people cannot open two
+accounts.
+
+**Roles are two booleans, not one.** `yetkili` answers *may this person administer
+the site* and can be granted or revoked. `kurucu` answers *may this account be
+touched* — and the answer is never. An administrator can promote others, suspend
+accounts and issue password resets, but cannot demote, suspend or reset the
+founder, because otherwise someone you trusted could lock you out of your own
+site. Nobody can act on their own account either — the last administrator
+demoting themselves would leave the site unadministrable.
+
+**Recovery without an email service.** Adding SMTP would have meant a second
+dependency, an API key and a new failure mode. Instead the same code mechanism
+handles password resets: an administrator generates a `SIFRE-…` code, hands it
+over, the user redeems it. Different prefix from the invite code on purpose, so
+pasting one into the wrong form is rejected rather than silently misread. A reset
+closes every existing session for that account — forgetting a password and losing
+control of one are hard to tell apart.
+
+**Suspension instead of deletion.** Deleting an account cascades to its trailers,
+boxes and plans. That is right for a real deletion and wrong for "this person
+should stop having access", so `aktif` was added: login refused, sessions dropped,
+data untouched, reversible. The check runs *after* password verification, so
+"this account is suspended" never leaks to someone who does not know the password.
+
+**A rate limiter that survives.** The brute-force counter lived in a `Map` with a
+comment calling the reset-on-restart behaviour an acceptable trade-off. It was
+not: the free hosting tier sleeps after 15 minutes of inactivity, so the counter
+was being wiped roughly every hour. It now lives in Postgres.
+
+---
+
 ## Design decisions worth explaining
 
 **No framework, one dependency.** `package.json` lists exactly one runtime
@@ -96,8 +158,11 @@ by someone who verified it.
 **Security.** Passwords are scrypt hashes (N=16384, r=8, p=1) with per-user salt —
 plaintext is never stored or logged. Sessions are random tokens kept in Postgres so
 a redeploy does not sign everyone out, delivered as HttpOnly cookies. Eight failed
-logins from one IP triggers a 10-minute lockout. TLS to the database verifies the
-certificate (`sslmode=verify-full`, no `rejectUnauthorized: false`).
+logins from one IP triggers a 10-minute lockout, counted in the database rather
+than in memory. Failed logins against a non-existent user still run scrypt against
+a decoy hash, so response time does not reveal which usernames exist. TLS to the
+database verifies the certificate (`sslmode=verify-full`, no
+`rejectUnauthorized: false`).
 
 ---
 
@@ -105,15 +170,18 @@ certificate (`sslmode=verify-full`, no `rejectUnauthorized: false`).
 
 ```
 motor/yerlesim.js      844 lines   the placement engine — browser + Node, no DOM
-sunucu/                1,862       HTTP router, validation, security, Postgres
-  server.js              589       routing, static files, 11 API endpoints
-  guvenlik.js                      scrypt, sessions, brute-force lockout
-  veritabani/sema.sql              schema, idempotent (safe to re-run)
-public/                5,344       the interface
-  uygulama.js          2,009       state, forms, live recalculation
+sunucu/                3,255       HTTP router, validation, security, Postgres
+  server.js              909       routing, static files, 23 API endpoints
+  veri.js                765       data layer — every query scoped to one owner
+  dogrula.js             465       input validation, code parsing
+  guvenlik.js            355       scrypt, sessions, code generation, rate limits
+  veritabani/sema.sql    384       10 tables, idempotent (safe to re-run)
+public/                6,274       the interface
+  uygulama.js          2,329       state, forms, live recalculation, admin panel
   3boyut.js              993       three.js scene, 4 camera modes, load animation
   cizim.js               523       2D canvas — top view and side section
-testler/               1,307       82 tests, node:test, no test framework
+  giris / kayit / sifre-sifirla    login, signup and password-reset pages
+testler/               1,551       104 tests, node:test, no test framework
 ```
 
 ## Running it
@@ -126,7 +194,7 @@ npm start                 # http://localhost:5180
 ```
 
 ```bash
-npm test                  # 82 tests
+npm test                  # 104 tests
 npm run db:dene           # check the database connection
 npm run db:kullanici -- liste
 ```
@@ -139,7 +207,9 @@ Requires Node 18+ and a Postgres database. Runs on [Neon](https://neon.tech)
 
 ## Status
 
-Complete and in production. 82 tests passing. Built over two days in July 2026.
+Complete and in production. 104 tests passing, plus an end-to-end suite that
+exercises signup, ownership isolation and the role rules against a real server
+and database. Built over two days in July 2026.
 
 ## License
 
