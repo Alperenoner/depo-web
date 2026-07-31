@@ -140,3 +140,11 @@ Node 18+ ve bir Postgres veritabanı gerekiyor. [Neon](https://neon.tech)
 ## Durum
 
 Bitti ve yayında. 82 test geçiyor. Temmuz 2026'da iki günde yazıldı.
+
+## Lisans
+
+Açık kaynak değildir. Kod **incelenmek için** yayımlandı — okuyun, inceleyin,
+sorun. Kullanım, kopyalama veya yeniden dağıtım izne tabidir; bir issue açın ya da
+[GitHub](https://github.com/Alperenoner) üzerinden ulaşın.
+
+© 2026 Alperen Öner. Tüm hakları saklıdır.

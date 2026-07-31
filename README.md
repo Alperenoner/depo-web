@@ -140,3 +140,11 @@ Requires Node 18+ and a Postgres database. Runs on [Neon](https://neon.tech)
 ## Status
 
 Complete and in production. 82 tests passing. Built over two days in July 2026.
+
+## License
+
+Not open source. The code is published for review — read it, study it, ask about
+it. Use, copying or redistribution requires permission; open an issue or reach me
+through [GitHub](https://github.com/Alperenoner).
+
+© 2026 Alperen Öner. All rights reserved.
